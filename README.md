@@ -11,3 +11,10 @@ CREATE (p:Paper {name: $name, date:$date})
 CREATE (j:Journal {name: $name})
 CREATE (p)-[:PUBLISH_IN]->(j)
 ```
+
+Show the entire path that link to a specific node.
+
+```bash
+MATCH p=(:Paper {doi: "10.1111/cuag.12316"})-[*]-()
+RETURN p
+```
