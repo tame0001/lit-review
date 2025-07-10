@@ -1,3 +1,4 @@
+import polars as pl
 from pyzotero import zotero
 from dotenv import dotenv_values
 from pydantic.dataclasses import dataclass
@@ -15,16 +16,32 @@ class ZoteroCollection:
 
 
 @dataclass
+class ZoteroAuthor:
+    """
+    Represents a Zotero author with their name and type.
+    """
+
+    name: str
+    type: str
+
+
+@dataclass
 class ZoteroItem:
     """
-    Represents a Zotero item with its ID, title, and type.
+    Represents a Zotero item
     """
 
     id: str
     title: str
+    authors: list[ZoteroAuthor]
+    publication: str | None
+    date: str | None
+    DOI: str | None
+    url: str | None
+    collections: list[str] | None
 
 
-def create_zotero_client(config, library_type="group"):
+def create_zotero_client(config, library_type="group") -> zotero.Zotero:
     """
     Create a Zotero client using the API key and library ID from configuration.
     By default, it connects to a group library.
@@ -37,7 +54,7 @@ def create_zotero_client(config, library_type="group"):
     )
 
 
-def get_all_collections(zot, collection_id):
+def get_all_collections(zot, collection_id) -> list[ZoteroCollection]:
     """
     Retrieve all nested collections under a specific Zotero collection.
     There is a built-in method `zot.all_collections(collection_id)` that retrieves sub-collections.
@@ -55,14 +72,53 @@ def get_all_collections(zot, collection_id):
     return collections
 
 
-def get_all_items(zot, collection_id):
+def extract_author_details(author_data) -> ZoteroAuthor:
+    """
+    Extract author details from the Zotero author data.
+    Returns a list of ZoteroAuthor objects.
+    """
+    try:
+        if "name" in author_data.keys():
+            return ZoteroAuthor(
+                name=author_data["name"],
+                type=author_data.get("creatorType", "unknown"),
+            )
+
+        else:
+            return ZoteroAuthor(
+                name=f"{author_data.get('firstName', '')} {author_data.get('lastName', '')}",
+                type=author_data.get("creatorType", "unknown"),
+            )
+
+    except Exception as e:
+        print(author_data)
+        print(f"Error extracting author details: {e}")
+
+
+def get_all_items(zot, collection_id) -> list[ZoteroItem]:
     """
     Retrieve items from a specific Zotero collections including sub-collections.
     This function will return a list of items.
     """
     items = []
+    # TODO: Should implement this task with asynchronous calls for better performance
     for collection in get_all_collections(zot, collection_id):
-        items += zot.collection_items(collection.id)
+        for item in zot.collection_items(collection.id):
+            items.append(
+                ZoteroItem(
+                    id=item["data"]["key"],
+                    title=item["data"].get("title", ""),
+                    authors=[
+                        extract_author_details(author)
+                        for author in item["data"].get("creators", [])
+                    ],
+                    publication=item["data"].get("publicationTitle"),
+                    date=item["data"].get("date"),
+                    DOI=item["data"].get("DOI"),
+                    url=item["data"].get("url"),
+                    collections=item["data"].get("collections", []),
+                )
+            )
     return items
 
 
@@ -70,11 +126,6 @@ if __name__ == "__main__":
     # Initialize Zotero client
     config = dotenv_values(".env")
     zot = create_zotero_client(config)
-    collections = get_all_collections(zot, config["COLLECTION_ID"])
-    for collection in collections:
-        print(
-            f"Collection: {collection.name} (ID: {collection.id}) parent: {collection.parent})"
-        )
-    print("------------------------------------------")
-
-    print(zot.item("ARDGYCFD"))
+    items = get_all_items(zot, config["COLLECTION_ID"])
+    df = pl.DataFrame(items)
+    print(df)

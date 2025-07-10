@@ -2,3 +2,4 @@ neo4j==5.28.*
 python-dotenv==1.1.*
 pyzotero==1.6.*
 pydantic==2.11.*
+polars==1.31.*
