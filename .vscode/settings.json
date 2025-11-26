@@ -1,3 +1,7 @@
 {
-  "cSpell.words": ["dotenv", "pydantic", "pyzotero", "zotero"]
+  "cSpell.words": ["dotenv", "pydantic", "pyzotero", "zotero"],
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "charliermarsh.ruff"
+  }
 }

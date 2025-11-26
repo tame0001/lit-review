@@ -1,7 +1,7 @@
 import polars as pl
-from pyzotero import zotero
 from dotenv import dotenv_values
 from pydantic.dataclasses import dataclass
+from pyzotero import zotero
 
 
 @dataclass
@@ -126,6 +126,13 @@ if __name__ == "__main__":
     # Initialize Zotero client
     config = dotenv_values(".env")
     zot = create_zotero_client(config)
+
+    # Retrieve all items including sub-collections
     items = get_all_items(zot, config["COLLECTION_ID"])
     df = pl.DataFrame(items)
     print(df)
+
+    # Example: Retrieve item by DOI
+    doi = "10.1007/s10460-025-10793-2"
+    item = df.filter(pl.col("DOI") == doi)
+    print(item)

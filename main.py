@@ -22,7 +22,6 @@ def add_node(session, node_properties):
 
 with GraphDatabase.driver(AURA_URI, auth=(AURA_USER, AURA_PASSWORD)) as driver:
     with driver.session() as session:
-
         node_properties = {"name": "John Doe", "age": 30, "city": "New York"}
         # Add a node to the database
         node = add_node(session, node_properties)
