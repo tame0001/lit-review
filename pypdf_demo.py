@@ -12,6 +12,5 @@ xmp = reader.xmp_metadata
 print(xmp.dc_title)
 print(xmp.dc_creator)
 
-page = reader.pages[1]
-text = page.extract_text()
-print(text)
+num_pages = len(reader.pages)
+print("Number of pages:", num_pages)
