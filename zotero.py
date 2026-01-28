@@ -122,6 +122,13 @@ def get_all_items(zot, collection_id) -> list[ZoteroItem]:
     return items
 
 
+def get_item(zot, id):
+    """
+    Retrieve a specific item by its ID.
+    """
+    return zot.item(id)
+
+
 if __name__ == "__main__":
     # Initialize Zotero client
     config = dotenv_values(".env")
