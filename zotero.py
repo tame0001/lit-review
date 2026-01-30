@@ -1,5 +1,6 @@
 import polars as pl
 from dotenv import dotenv_values
+from datetime import date
 from pydantic.dataclasses import dataclass
 from pyzotero import zotero
 
@@ -22,7 +23,9 @@ class ZoteroAuthor:
     """
 
     name: str
-    type: str
+
+    def __repr__(self):
+        return self.name
 
 
 @dataclass
@@ -33,12 +36,15 @@ class ZoteroItem:
 
     id: str
     title: str
+    short_author: str | None
     authors: list[ZoteroAuthor]
+    type: str | None
     publication: str | None
-    date: str | None
+    date: date | None
     DOI: str | None
     url: str | None
-    collections: list[str] | None
+    collections: str | None
+    pdf: bool = False
 
 
 def create_zotero_client(config, library_type="group") -> zotero.Zotero:
@@ -81,13 +87,11 @@ def extract_author_details(author_data) -> ZoteroAuthor:
         if "name" in author_data.keys():
             return ZoteroAuthor(
                 name=author_data["name"],
-                type=author_data.get("creatorType", "unknown"),
             )
 
         else:
             return ZoteroAuthor(
                 name=f"{author_data.get('firstName', '')} {author_data.get('lastName', '')}",
-                type=author_data.get("creatorType", "unknown"),
             )
 
     except Exception as e:
@@ -108,17 +112,20 @@ def get_all_items(zot, collection_id) -> list[ZoteroItem]:
                 ZoteroItem(
                     id=item["data"]["key"],
                     title=item["data"].get("title", ""),
+                    short_author=item["meta"].get("creatorSummary"),
                     authors=[
                         extract_author_details(author)
                         for author in item["data"].get("creators", [])
                     ],
+                    type=item["data"].get("itemType"),
                     publication=item["data"].get("publicationTitle"),
                     date=item["data"].get("date"),
                     DOI=item["data"].get("DOI"),
                     url=item["data"].get("url"),
-                    collections=item["data"].get("collections", []),
+                    collections=",".join(item["data"].get("collections", [])),
                 )
             )
+
     return items
 
 
