@@ -45,6 +45,7 @@ class ZoteroItem:
     url: str | None
     collections: str | None
     pdf: bool = False
+    abstract: str | None = None
 
 
 def create_zotero_client(config, library_type="group") -> zotero.Zotero:
@@ -107,6 +108,7 @@ def get_all_items(zot, collection_id) -> list[ZoteroItem]:
     items = []
     # TODO: Should implement this task with asynchronous calls for better performance
     for collection in get_all_collections(zot, collection_id):
+        # TODO: Write raw data in the database for caching
         for item in zot.collection_items(collection.id):
             items.append(
                 ZoteroItem(
@@ -123,6 +125,7 @@ def get_all_items(zot, collection_id) -> list[ZoteroItem]:
                     DOI=item["data"].get("DOI"),
                     url=item["data"].get("url"),
                     collections=",".join(item["data"].get("collections", [])),
+                    abstract=item["data"].get("abstractNote"),
                 )
             )
 
@@ -131,7 +134,7 @@ def get_all_items(zot, collection_id) -> list[ZoteroItem]:
 
 def get_item(zot, id):
     """
-    Retrieve a specific item by its ID.
+    Retrieve a raw data specific item by its ID.
     """
     return zot.item(id)
 

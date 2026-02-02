@@ -3,6 +3,7 @@ import shutil
 import polars as pl
 from dotenv import dotenv_values
 from pathlib import Path
+from tqdm import tqdm
 
 
 TARGET_COLLECTION_ID = "INADL5PC"
@@ -17,9 +18,12 @@ if __name__ == "__main__":
     items = zotero.get_all_items(zot, TARGET_COLLECTION_ID)
 
     # Check for PDF attachments for each item
-    for item in items:
+    print(f"Found {len(items)} items. processing...")
+    for item in tqdm(items):
+        # Skip items that are not in the target collection (it is not a main item)
         if TARGET_COLLECTION_ID not in item.collections:
             continue
+        # TODO: Check data in cache before making API call
         meta = zotero.get_item(zot, item.id)
         if attachment := meta["links"].get("attachment", None):
             if attachment.get("attachmentType", None) == "application/pdf":
