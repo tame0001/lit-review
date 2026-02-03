@@ -35,15 +35,15 @@ class ZoteroItem:
     """
 
     id: str
-    title: str
     short_author: str | None
     authors: list[ZoteroAuthor]
+    title: str
     type: str | None
     publication: str | None
     date: date | None
     DOI: str | None
     url: str | None
-    collections: str | None
+    collections: str = ""
     pdf: bool = False
     abstract: str | None = None
 
@@ -98,6 +98,7 @@ def extract_author_details(author_data) -> ZoteroAuthor:
     except Exception as e:
         print(author_data)
         print(f"Error extracting author details: {e}")
+        return ZoteroAuthor(name="Unknown Author")
 
 
 def get_all_items(zot, collection_id) -> list[ZoteroItem]:
@@ -132,7 +133,7 @@ def get_all_items(zot, collection_id) -> list[ZoteroItem]:
     return items
 
 
-def get_item(zot, id):
+def get_item(zot, id) -> dict:
     """
     Retrieve a raw data specific item by its ID.
     """
