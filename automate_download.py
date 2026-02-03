@@ -18,7 +18,7 @@ if __name__ == "__main__":
     items = zotero.get_all_items(zot, TARGET_COLLECTION_ID)
 
     # Check for PDF attachments for each item
-    print(f"Found {len(items)} items. processing...")
+    print(f"Found {len(items)} items. Processing...")
     for item in tqdm(items):
         # Skip items that are not in the target collection (it is not a main item)
         if TARGET_COLLECTION_ID not in item.collections:
@@ -74,4 +74,4 @@ if __name__ == "__main__":
         .map_elements(lambda authors: ", ".join(authors), return_dtype=pl.String)
         .alias("authors"),
     )
-    df_title.write_csv("zotero_items.csv")
+    df_title.write_csv(Path(".") / "output" / "zotero_items.csv")
