@@ -1,4 +1,13 @@
-from ollama import chat, ChatResponse
+import requests
+from dotenv import dotenv_values
+
+
+def read_api_key() -> str:
+    config = dotenv_values(".env")
+    api_key = config.get("GENAI_API_KEY")
+    if not api_key:
+        raise ValueError("GENAI_API_KEY is not set in .env file")
+    return api_key
 
 
 def is_agtech_abstract(abstract_text: str) -> str:
@@ -8,8 +17,29 @@ def is_agtech_abstract(abstract_text: str) -> str:
     Do not provide any explanations, just answer "Yes" or "No" followed by the sentences if applicable.
     Abstract: {abstract_text}
     """
-    response: ChatResponse = chat(
-        model="llama3.1:8b",
-        messages=[{"role": "user", "content": prompt}],
+    api_key = read_api_key()
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    data = {
+        "model": "llama4:latest",
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+    }
+
+    response = requests.post(
+        url="https://genai.rcac.purdue.edu/api/chat/completions",
+        headers=headers,
+        json=data,
     )
-    return response.message.content or "No response from LLM"
+
+    if response.status_code == 200:
+        return response.json()["choices"][0]["message"]["content"].strip()
+    else:
+        raise Exception(f"Error: {response.status_code}, {response.text}")
