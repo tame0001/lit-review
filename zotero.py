@@ -35,7 +35,7 @@ class ZoteroItem:
     """
 
     id: str
-    short_author: str | None
+    author_short: str | None
     authors: list[ZoteroAuthor]
     title: str
     type: str | None
@@ -115,7 +115,7 @@ def get_all_items(zot, collection_id) -> list[ZoteroItem]:
                 ZoteroItem(
                     id=item["data"]["key"],
                     title=item["data"].get("title", ""),
-                    short_author=item["meta"].get("creatorSummary"),
+                    author_short=item["meta"].get("creatorSummary"),
                     authors=[
                         extract_author_details(author)
                         for author in item["data"].get("creators", [])
