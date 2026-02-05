@@ -2,6 +2,7 @@ import zotero
 import shutil
 import llm
 import asyncio
+import json
 import polars as pl
 from dotenv import dotenv_values
 from pathlib import Path
@@ -79,15 +80,22 @@ if __name__ == "__main__":
     zot = zotero.create_zotero_client(config)
     # Retrieve all items including sub-collections
     items = zotero.get_all_items(zot, TARGET_COLLECTION_ID)
-
     print(f"Found {len(items)} items. Processing...")
     # Process each item
     papers: list[Paper] = []
+    # Open Zotero metadata cache
+    cache_path = Path("./output") / "zotero_cache.json"
+    with cache_path.open("r") as fp:
+        cache = json.load(fp)
     for item in tqdm(items):
         # Skip items that are not in the target collection (it is not a main item)
         if TARGET_COLLECTION_ID not in item.collections:
             continue
-        meta = zotero.get_item(zot, item.id)
+        # Retrieve raw metadata
+        if item.id in cache:
+            meta = cache[item.id]
+        else:
+            meta = zotero.get_item(zot, item.id)
         # Convert to paper dataclass for further processing
         paper = Paper(**item.__dict__)
         # Move PDF if exists
@@ -100,7 +108,6 @@ if __name__ == "__main__":
 
     # Create DataFrame
     df = pl.DataFrame(papers)
-
     # Author column is list of list of strings, flatten it
     df = df.with_columns(
         pl.col("authors")
@@ -111,7 +118,6 @@ if __name__ == "__main__":
         .alias("authors")
     )
     print(df)
-
     # Flatten authors column to string before export to CSV
     df = df.with_columns(
         pl.col("authors")

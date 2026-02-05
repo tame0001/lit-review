@@ -1,8 +1,10 @@
+import json
 import polars as pl
 from dotenv import dotenv_values
 from datetime import date
 from pydantic.dataclasses import dataclass
 from pyzotero import zotero
+from pathlib import Path
 
 
 @dataclass
@@ -107,10 +109,21 @@ def get_all_items(zot, collection_id) -> list[ZoteroItem]:
     This function will return a list of items.
     """
     items = []
-    # TODO: Should implement this task with asynchronous calls for better performance
+    # Cache raw data to a temp file for debugging
+    cache_path = Path("./output") / "zotero_cache.json"
+    if not cache_path.exists():
+        with cache_path.open("w+") as fp:
+            json.dump({}, fp)
+    with cache_path.open("r") as fp:
+        cached_data = json.load(fp)
+    # Iterate through all sub-collections
     for collection in get_all_collections(zot, collection_id):
-        # TODO: Write raw data in the database for caching
+        # Iterate through all items in the collection
         for item in zot.collection_items(collection.id):
+            # Used Zotero item ID as a key
+            if not cached_data.get(item["data"]["key"], None):
+                cached_data[item["data"]["key"]] = item
+            # Build ZoteroItem object
             items.append(
                 ZoteroItem(
                     id=item["data"]["key"],
@@ -129,6 +142,9 @@ def get_all_items(zot, collection_id) -> list[ZoteroItem]:
                     abstract=item["data"].get("abstractNote"),
                 )
             )
+    # Update cache file
+    with cache_path.open("w") as fp:
+        json.dump(cached_data, fp)
 
     return items
 
