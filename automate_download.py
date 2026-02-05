@@ -13,6 +13,9 @@ from dataclasses import dataclass
 @dataclass
 class Paper(zotero.ZoteroItem):
     is_agtech: str = ""
+    technology: str = ""
+    location: str = ""
+    participants: str = ""
 
 
 TARGET_COLLECTION_ID = "INADL5PC"
@@ -70,6 +73,9 @@ async def process_abstract(paper: Paper):
     """
     if paper.abstract:
         paper.is_agtech = await llm.is_agtech_abstract(paper.abstract)
+        paper.technology = await llm.technology_from_abstract(paper.abstract)
+        paper.location = await llm.location_from_abstract(paper.abstract)
+        paper.participants = await llm.participants_from_abstract(paper.abstract)
     else:
         paper.is_agtech = "No abstract provided."
 

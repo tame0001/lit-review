@@ -57,3 +57,51 @@ async def is_agtech_abstract(abstract_text: str) -> str:
         return response.json()["choices"][0]["message"]["content"].strip()
     else:
         raise RuntimeError(f"Error: {response.status_code}, {response.text}")
+
+
+async def technology_from_abstract(abstract_text: str) -> str:
+    prompt = f"""
+    From the abstract I am going to give to you, can you tell me what agricultural technologies are mentioned in the abstract? 
+    If no agricultural technology is mentioned, just answer "No agricultural technology mentioned".
+    If agricultural technologies are mentioned, mention them in a comma-separated list followed by the sentence that mentions them.
+    Do not provide any explanations.
+    Abstract: {abstract_text}
+    """
+
+    response = await send_request(prompt)
+    if response.status_code == 200:
+        return response.json()["choices"][0]["message"]["content"].strip()
+    else:
+        raise RuntimeError(f"Error: {response.status_code}, {response.text}")
+
+
+async def location_from_abstract(abstract_text: str) -> str:
+    prompt = f"""
+    From the abstract I am going to give to you, can you tell me the geographical location mentioned in the abstract? 
+    If no location is mentioned, just answer "No location mentioned".
+    If locations are mentioned, mention them in a comma-separated list followed by the sentence that mentions them.
+    Do not provide any explanations.
+    Abstract: {abstract_text}
+    """
+
+    response = await send_request(prompt)
+    if response.status_code == 200:
+        return response.json()["choices"][0]["message"]["content"].strip()
+    else:
+        raise RuntimeError(f"Error: {response.status_code}, {response.text}")
+
+
+async def participants_from_abstract(abstract_text: str) -> str:
+    prompt = f"""
+    From the abstract I am going to give to you, can you tell me the types of participants mentioned in the abstract? 
+    If no participants are mentioned, just answer "No participants mentioned".
+    If participants are mentioned, mention them in a comma-separated list followed by the sentence that mentions them.
+    Do not provide any explanations.
+    Abstract: {abstract_text}
+    """
+
+    response = await send_request(prompt)
+    if response.status_code == 200:
+        return response.json()["choices"][0]["message"]["content"].strip()
+    else:
+        raise RuntimeError(f"Error: {response.status_code}, {response.text}")
