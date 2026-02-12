@@ -1,8 +1,11 @@
-ruff==0.14.*
+ruff==0.15.*
 neo4j==5.28.*
-python-dotenv==1.1.*
-pyzotero==1.6.*
-pydantic==2.11.*
-polars==1.31.*
+python-dotenv==1.2.*
+pyzotero==1.10.*
+pydantic==2.12.*
+polars==1.38.*
 httpx==0.28.*
 tqdm==4.67.*
+mss==10.1.*
+opencv-python==4.13.*
+pyautogui==0.9.*
