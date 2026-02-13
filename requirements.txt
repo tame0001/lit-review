@@ -9,3 +9,4 @@ tqdm==4.67.*
 mss==10.1.*
 opencv-python==4.13.*
 pyautogui==0.9.*
+pyperclip==1.11.*

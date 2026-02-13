@@ -1,9 +1,13 @@
 {
   "cSpell.words": [
     "agtech",
+    "BGRA",
     "dotenv",
     "GENAI",
+    "imread",
+    "imshow",
     "ollama",
+    "pyautogui",
     "pydantic",
     "pyzotero",
     "zotero"
