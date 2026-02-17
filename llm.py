@@ -47,9 +47,14 @@ async def send_request(prompt: str) -> httpx.Response:
 async def is_agtech_abstract(abstract_text: str) -> str:
     prompt = f"""
     From the abstract I am going to give to you, can you tell me if the abstract is talking about agricultural technology or not? 
-    If yes, state which sentences that has to do with agricultural technology.
-    Do not provide any explanations, just answer "Yes" or "No" followed by the sentences if applicable.
     Abstract: {abstract_text}
+    Format the output in JSON format with the following structure. Do not provide any thing else, just answer in the following format:
+    // JSON format
+    
+        "is_agtech": "Yes or No",
+        "sentence": "The sentence in the abstract that indicates whether it's AgTech or not. if multiple sentences indicate that, just provide the best one",
+        "reason": "A brief explanation of why you think it's AgTech or not based on the abstract."
+    
     """
 
     response = await send_request(prompt)
