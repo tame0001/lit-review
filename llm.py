@@ -64,6 +64,27 @@ async def is_agtech_abstract(abstract_text: str) -> str:
         raise RuntimeError(f"Error: {response.status_code}, {response.text}")
 
 
+async def is_tech_adoption(abstract_text: str) -> str:
+    prompt = f"""
+    From the abstract I am going to give to you, can you tell me if the abstract is about agricultural technology adoption or not? 
+    To be more specific, I want to know if the abstract is talking about processes and factors related to the adoption of agricultural technologies. 
+    Abstract: {abstract_text}
+    Format the output in JSON format with the following structure. Do not provide any thing else, just answer in the following format:
+    // JSON format
+    
+        "is_adoption": "Yes or No",
+        "sentence": "The sentence in the abstract that indicates whether it's technology adoption or not. if multiple sentences indicate that, just provide the best one",
+        "reason": "A brief explanation of why you think it's AgTech adoption or not based on the abstract."
+    
+    """
+
+    response = await send_request(prompt)
+    if response.status_code == 200:
+        return response.json()["choices"][0]["message"]["content"].strip()
+    else:
+        raise RuntimeError(f"Error: {response.status_code}, {response.text}")
+
+
 async def technology_from_abstract(abstract_text: str) -> str:
     prompt = f"""
     From the abstract I am going to give to you, can you tell me what agricultural technologies are mentioned in the abstract? 

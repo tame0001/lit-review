@@ -7,6 +7,15 @@ AURA_URI = config["URI"]
 AURA_USER = "neo4j"
 AURA_PASSWORD = config["PASSWORD"]
 
+"""
+Note to myself:
+Current design with 4 types of nodes: author, paper, journal, topic.
+The relationships between them are:
+- Author -[WROTE]-> Paper
+- Paper -[PUBLISHED_IN]-> Journal
+- Paper -[HAS_TOPIC]-> Topic
+"""
+
 
 def add_node(session, node_properties):
     """

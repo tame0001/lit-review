@@ -176,3 +176,4 @@ cython_debug/
 pdfs/
 output/
 temp/
+.xls

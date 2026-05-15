@@ -16,8 +16,8 @@ def process_response(response: str) -> dict:
     Process the response from the LLM and extract the relevant information.
     Return a dictionary with the following structure:
         is_agtech: "Yes" or "No" or "Error" if there is processing is failed
-        sentence: The sentence in the abstract that indicates whether it's AgTech or not.
-        reason: A brief explanation of why LLM think it's AgTech or not based on the abstract.
+        sentence: The evidence sentence from the abstract that supports the answer. Empty if there is no evidence or in case of error.
+        reason: A brief explanation from LLM
 
     In case of error, the raw response will be stored in the reason field for debugging purposes.
     """
@@ -26,24 +26,18 @@ def process_response(response: str) -> dict:
         response = response[response.find("{") : response.rfind("}") + 1]
         response = json.loads(response)
         return {
-            "is_agtech": response.get("is_agtech", "Error"),
+            "answer": response.get("answer", "Error"),
             "sentence": response.get("sentence", ""),
             "reason": response.get("reason", ""),
         }
 
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"Error decoding JSON: {e}") from e
-    except KeyError as e:
-        raise RuntimeError(f"Missing expected key in response: {e}") from e
     except Exception as e:
-        raise RuntimeError(f"Unexpected error processing response: {e}") from e
-
-    finally:
-        # In case of any error, return the raw response for debugging
         return {
-            "is_agtech": "Error",
-            "sentence": "",
-            "reason": json.dumps(response, indent=2),
+            "answer": "Error",
+            "sentence": json.dumps(response, indent=2)
+            if isinstance(response, dict)
+            else response,
+            "reason": f"Error processing response: {e}",
         }
 
 
@@ -89,16 +83,29 @@ async def process_web_of_science_export(file_path):
     )
     # Process abstracts
     tasks = [llm.is_agtech_abstract(abstract) for abstract in wos["Abstract"]]
-    print("Processed abstracts ...")
-    is_agtech = await tqdm.gather(*tasks)
+    is_agtech = await tqdm.gather(*tasks, desc="Processing abstracts", total=len(tasks))
     # Process the responses and extract relevant information
     responses = [process_response(response) for response in is_agtech]
     # Add the extracted information to the DataFrame
     wos = wos.with_columns(
-        pl.Series("is_agtech", [response["is_agtech"] for response in responses]),
+        pl.Series("is_agtech", [response["answer"] for response in responses]),
         pl.Series("agtech_sentence", [response["sentence"] for response in responses]),
         pl.Series("agtech_reason", [response["reason"] for response in responses]),
     )
+    # Only process paper that are identified as AgTech
+    tasks = [
+        llm.is_agtech_adoption(abstract)
+        for abstract in wos.filter(pl.col("is_agtech") == "Yes")["Abstract"]
+    ]
+    responses = await tqdm.gather(
+        *tasks, desc="Processing AgTech abstracts", total=len(tasks)
+    )
+    # Map the responses back to paper
+    responses = {
+        doi: responses[i]
+        for i, doi in enumerate(wos.filter(pl.col("is_agtech") == "Yes")["DOI"])
+    }
+    print(responses)
 
     # Save to CSV
     wos.write_csv(PATH / "output" / "processed_wos.csv")
