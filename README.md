@@ -1,3 +1,10 @@
+# Note to myself
+
+- Migrate from virtual environment to uv
+- Reorganize folder. Functionality should be in utils. Create main files for lit review pipeline.
+- Complete todo list in [here](main.py)
+- Scite.ai has API [docs](https://api.scite.ai/docs)
+
 # Neo4j Commands
 
 ## Creating new nodes

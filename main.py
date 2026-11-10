@@ -9,6 +9,8 @@ AURA_PASSWORD = config["PASSWORD"]
 
 """
 Note to myself:
+Before writing node, make sure that Zotero API & Scite.ai API work
+
 Current design with 4 types of nodes: author, paper, journal, topic.
 The relationships between them are:
 - Author -[WROTE]-> Paper
