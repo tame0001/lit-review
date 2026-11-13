@@ -1,27 +1,34 @@
-# Note to myself
+# Literature Review & Knowledge Synthesis System
+
+A personal research cockpit combining **Zotero**, **Obsidian**, and **Scite.ai** for fast Quarto citation and research gap discovery.
+
+## Setup Requirements
+
+### 1. Obsidian Vault Symlink
+This repository expects a symlink named `obsidian` pointing to your private Obsidian vault (stored in your Dropbox or local drive):
+
+```bash
+# In the root of this repository:
+ln -s "/path/to/your/Dropbox/vault" obsidian
+```
+
+*Note: The actual path to your vault is kept private and never hard-coded in the repository configuration.*
+
+### 2. Credentials & Secrets
+All API credentials (Zotero, Scite.ai, GenAI) are retrieved securely from the Linux system keyring (`lit-review` service). Zero plain-text keys are stored in this repository.
+
+To set your credentials using your Linux terminal:
+```bash
+keyring set lit-review ZOTERO_LIBRARY_ID
+keyring set lit-review ZOTERO_API_KEY
+keyring set lit-review SCITE_API_KEY
+```
+
+---
+
+# Note to myself (Legacy / Roadmap)
 
 - Migrate from virtual environment to uv
-- Reorganize folder. Functionality should be in utils. Create main files for lit review pipeline.
+- Reorganize folder. Functionality should be in utils / backend.
 - Complete todo list in [here](main.py)
 - Scite.ai has API [docs](https://api.scite.ai/docs)
-
-# Neo4j Commands
-
-## Creating new nodes
-
-Creating a new paper node and assign it as a variable `p`.
-Then create another journal node and assign it as a variable `j`.
-Crete a relationship between node `j` and node `p`.
-
-```bash
-CREATE (p:Paper {name: $name, date:$date})
-CREATE (j:Journal {name: $name})
-CREATE (p)-[:PUBLISH_IN]->(j)
-```
-
-Show the entire path that link to a specific node.
-
-```bash
-MATCH p=(:Paper {doi: "10.1111/cuag.12316"})-[*]-()
-RETURN p
-```

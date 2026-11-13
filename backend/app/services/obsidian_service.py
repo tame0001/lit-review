@@ -2,7 +2,7 @@
 Obsidian Service
 ----------------
 This service manages reading, creating, and updating Markdown literature notes 
-and concept notes within the Dropbox-synced Obsidian vault (~/Dropbox/Obsidian/Academic).
+and concept notes within the linked Obsidian vault (`./obsidian`).
 
 Functionality / Feature List:
 1. Vault Path & Directory Management:
@@ -31,14 +31,16 @@ Functionality / Feature List:
 
 from pathlib import Path
 from typing import Any
+from ..config import settings
 
 
 class ObsidianService:
-    def __init__(self, vault_path: str = "/home/tam/Dropbox/Obsidian/Academic"):
-        self.vault_path = Path(vault_path)
+    def __init__(self, vault_path: str | Path | None = None):
+        self.vault_path = Path(vault_path) if vault_path else Path(settings.obsidian_vault_path)
         self.lit_dir = self.vault_path / "01-Literature"
         self.concepts_dir = self.vault_path / "02-Concepts"
         self.gaps_dir = self.vault_path / "03-Research-Gaps"
+        self.manuscripts_dir = self.vault_path / "04-Manuscripts"
 
     def ensure_directories(self) -> None:
         """Create standard vault folders if they do not exist."""
@@ -55,6 +57,8 @@ class ObsidianService:
         quick_finding: str | None = None,
         methods: list[str] | None = None,
         limitations: list[str] | None = None,
+        scite_metrics: dict[str, int] | None = None,
+        contrasting_snippets: list[dict[str, Any]] | None = None,
     ) -> Path:
         """
         Write or update an atomic literature note (@citekey.md) with YAML frontmatter,

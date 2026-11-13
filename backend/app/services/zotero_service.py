@@ -1,98 +1,363 @@
 """
 Zotero Service
 --------------
-This service interfaces with the Zotero API (and/or local Zotero SQLite database)
-to extract metadata, PDF attachments, annotations, and colored highlights.
+Local-first Zotero service with seamless Cloud API fallback.
+Uses httpx2 for high-performance, standardized HTTP requests.
 
-Credentials are securely retrieved via the system keyring (backend/app/config.py).
+When Zotero Desktop is open, queries http://localhost:23119 (< 5ms, offline, zero rate-limit).
+If Zotero Desktop is closed, issues a clear status warning and automatically falls back
+to the official cloud API (api.zotero.org) using encrypted keyring credentials.
 
-Functionality / Feature List:
-1. Initialize Client: [IMPLEMENTED]
-   - Connect to Zotero API using library_id, api_key from system keyring, and library_type (user/personal library).
-   - Verify connection status.
-
-2. Fetch Read Papers: [PENDING]
-   - Retrieve items marked as 'read' or items belonging to a specific collection.
-   - Extract core bibliographic metadata: citekey, title, authors, year, DOI, abstract, and URL.
-
-3. Extract PDF Highlights & Annotations: [PENDING]
-   - Retrieve all annotations (highlights, marginal notes, comments) attached to a paper's PDF.
-   - Group highlights by color semantics:
-     * Yellow (#ffd400): Core findings / claims
-     * Green (#5fb236): Methodology, datasets, models, sample sizes
-     * Red/Pink (#ff6666): Limitations, weaknesses, unresolved questions
-     * Purple (#a28ae5): Direct verbatim quotes for citation
-   - Preserve page numbers and build deep-links (`zotero://open-pdf/library/items/<key>?page=<page>&annotation=<annKey>`).
-
-4. Update Paper Metadata / Tags: [PENDING]
-   - Add or update tags in Zotero (e.g. status tags: `!p1-must-read`, `status/read`, `status/cite-only`).
+Features Implemented:
+1. Initialize Client & Dual-Mode Status Monitoring (via httpx2)
+2. Fetch Read Papers & Metadata with Better BibTeX Citekey Resolution
+3. Extract PDF Highlights & Annotations with Color Semantics & Deep-Links
+4. Update Paper Metadata / Tags
 """
 
+import re
 from typing import Any
+import httpx2
 from pyzotero import zotero
 from ..config import settings
 
 
 class ZoteroService:
+    LOCAL_URL = "http://localhost:23119/api/users/0"
+    COLOR_MAP = {
+        "#ffd400": "finding",      # Yellow: Core findings / takeaways
+        "#5fb236": "method",       # Green: Methodology, datasets, models
+        "#ff6666": "limitation",   # Red/Pink: Limitations, weaknesses, gaps
+        "#a28ae5": "quote",        # Purple: Verbatim quotes for citation
+        "#2ea8e5": "context",      # Blue: Background / context
+    }
+
     def __init__(
         self,
         library_id: str | None = None,
         api_key: str | None = None,
         library_type: str | None = None,
+        prefer_local: bool = True,
+        timeout: float = 3.0,
     ):
-        """
-        Feature 1: Initialize Zotero Client.
-        Retrieves credentials from system keyring (via settings) by default,
-        with optional override parameters.
-        """
         self.library_id = library_id or settings.zotero_library_id
         self.api_key = api_key or settings.zotero_api_key
         self.library_type = library_type or settings.zotero_library_type
+        self.prefer_local = prefer_local
+        self.timeout = timeout
 
-        if not self.library_id or not self.api_key:
-            raise ValueError(
-                "Missing Zotero credentials: ZOTERO_LIBRARY_ID and ZOTERO_API_KEY must be "
-                "stored in system keyring (service: 'lit-review') or provided as arguments."
-            )
+        # Shared httpx2 client for local requests
+        self.http_client = httpx2.Client(
+            headers={"User-Agent": "lit-review-backend/1.0"},
+            timeout=self.timeout,
+        )
 
-        self.client = zotero.Zotero(self.library_id, self.library_type, self.api_key)
+        # Connection status tracking
+        self.is_local_available: bool = False
+        self.active_mode: str = "cloud"
 
-    def verify_connection(self) -> dict[str, Any]:
-        """
-        Verify credentials by querying basic key permissions.
-        Returns a dictionary with status and library details if successful.
-        """
+        # Initialize cloud client as backup/foundation
+        self.cloud_client: zotero.Zotero | None = None
+        if self.library_id and self.api_key:
+            self.cloud_client = zotero.Zotero(self.library_id, self.library_type, self.api_key)
+
+        # Check local connection and emit status/warning
+        self.refresh_connection_status()
+
+    def refresh_connection_status(self) -> dict[str, Any]:
+        """Probe localhost API via httpx2 to determine if Zotero Desktop is active."""
+        if not self.prefer_local:
+            self.is_local_available = False
+            self.active_mode = "cloud"
+            return {"mode": "cloud", "local_available": False}
+
         try:
-            # Query key permissions to verify read access without pulling large data
-            key_info = self.client.key_info()
-            return {
-                "status": "connected",
-                "library_id": self.library_id,
-                "library_type": self.library_type,
-                "user_id": key_info.get("userID"),
-                "permissions": key_info.get("access", {}),
-            }
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": str(e),
-            }
+            resp = self.http_client.get(f"{self.LOCAL_URL}/collections", timeout=1.0)
+            if resp.status_code == 200:
+                self.is_local_available = True
+                self.active_mode = "local"
+                print("✓ [ZoteroService] Connected to Zotero Localhost API (fast, offline-ready).")
+                return {"mode": "local", "local_available": True}
+        except Exception:
+            pass
 
-    async def get_paper_metadata(self, item_key: str) -> dict[str, Any]:
-        """Fetch core metadata (title, authors, year, citekey, DOI) for a single paper."""
-        raise NotImplementedError("Feature 2: Fetch Paper Metadata not implemented")
+        self.is_local_available = False
+        self.active_mode = "cloud"
+        print("⚠️ [ZoteroService] WARNING: Localhost API unreachable (Zotero desktop closed?). Falling back to Cloud API.")
+        return {"mode": "cloud", "local_available": False}
 
-    async def get_read_papers(self, collection_key: str | None = None) -> list[dict[str, Any]]:
-        """Retrieve papers that have annotations or are marked as read."""
-        raise NotImplementedError("Feature 2: Fetch Read Papers not implemented")
+    # -------------------------------------------------------------------------
+    # Internal HTTP Dispatcher via httpx2 (Local vs. Cloud)
+    # -------------------------------------------------------------------------
+    def _local_get(self, endpoint: str, params: dict[str, Any] | None = None) -> Any:
+        """Execute a GET request against Zotero localhost server using httpx2."""
+        url = f"{self.LOCAL_URL}/{endpoint}"
+        resp = self.http_client.get(url, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
-    async def get_pdf_annotations(self, item_key: str) -> list[dict[str, Any]]:
+    def _get_items_raw(self, **kwargs) -> list[dict[str, Any]]:
+        """Fetch items using local API if available, else cloud."""
+        if self.is_local_available:
+            try:
+                params: dict[str, Any] = {}
+                if "limit" in kwargs:
+                    params["limit"] = kwargs["limit"]
+                if "itemType" in kwargs:
+                    params["itemType"] = kwargs["itemType"]
+                if "tag" in kwargs:
+                    params["tag"] = kwargs["tag"]
+                return self._local_get("items", params)
+            except Exception as e:
+                print(f"Local query failed ({e}); falling back to cloud.")
+                self.refresh_connection_status()
+
+        if not self.cloud_client:
+            raise RuntimeError("Cloud client unavailable: Zotero credentials missing in keyring.")
+        return self.cloud_client.items(**kwargs)
+
+    def _get_collection_items_raw(self, collection_key: str, **kwargs) -> list[dict[str, Any]]:
+        """Fetch collection items using local API if available, else cloud."""
+        if self.is_local_available:
+            try:
+                params: dict[str, Any] = {}
+                if "limit" in kwargs:
+                    params["limit"] = kwargs["limit"]
+                if "itemType" in kwargs:
+                    params["itemType"] = kwargs["itemType"]
+                return self._local_get(f"collections/{collection_key}/items", params)
+            except Exception:
+                self.refresh_connection_status()
+
+        if not self.cloud_client:
+            raise RuntimeError("Cloud client unavailable: Zotero credentials missing in keyring.")
+        return self.cloud_client.collection_items(collection_key, **kwargs)
+
+    def _get_children_raw(self, item_key: str) -> list[dict[str, Any]]:
+        """Fetch child items (attachments, notes, annotations)."""
+        if self.is_local_available:
+            try:
+                return self._local_get(f"items/{item_key}/children")
+            except Exception:
+                self.refresh_connection_status()
+
+        if not self.cloud_client:
+            raise RuntimeError("Cloud client unavailable.")
+        return self.cloud_client.children(item_key)
+
+    # -------------------------------------------------------------------------
+    # Feature 2 Helpers
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _extract_year(date_str: str | None) -> int | None:
+        if not date_str:
+            return None
+        match = re.search(r"\b(19\d\d|20\d\d)\b", str(date_str))
+        return int(match.group(1)) if match else None
+
+    @staticmethod
+    def _extract_authors(creators: list[dict[str, Any]] | None) -> list[str]:
+        if not creators:
+            return []
+        authors = []
+        for c in creators:
+            if "name" in c:
+                authors.append(c["name"])
+            elif "firstName" in c and "lastName" in c:
+                authors.append(f"{c['firstName']} {c['lastName']}".strip())
+            elif "lastName" in c:
+                authors.append(c["lastName"])
+        return authors
+
+    @staticmethod
+    def _extract_first_author_lastname(creators: list[dict[str, Any]] | None) -> str:
+        if not creators:
+            return "unknown"
+        first = creators[0]
+        name = first.get("lastName") or first.get("name", "unknown")
+        cleaned = re.sub(r"[^\w]", "", name.lower())
+        return cleaned or "unknown"
+
+    def _extract_citekey(self, data: dict[str, Any]) -> str:
+        """Extract Better BibTeX citation key from 'extra' or generate fallback."""
+        extra = data.get("extra", "")
+        if extra:
+            match = re.search(r"(?:Citation Key|bibtex):\s*([A-Za-z0-9_-]+)", extra, re.IGNORECASE)
+            if match:
+                return match.group(1)
+
+        author = self._extract_first_author_lastname(data.get("creators"))
+        year = self._extract_year(data.get("date")) or ""
+        title = data.get("title", "")
+        words = [re.sub(r"[^\w]", "", w) for w in title.split() if len(w) > 3]
+        title_word = words[0].capitalize() if words else "Paper"
+        return f"{author}{title_word}{year}"
+
+    def _parse_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        data = item.get("data", {})
+        key = data.get("key", "")
+        creators = data.get("creators", [])
+        
+        return {
+            "key": key,
+            "citekey": self._extract_citekey(data),
+            "title": data.get("title", "Untitled"),
+            "authors": self._extract_authors(creators),
+            "author_short": item.get("meta", {}).get("creatorSummary"),
+            "year": self._extract_year(data.get("date")),
+            "date": data.get("date"),
+            "doi": data.get("DOI"),
+            "url": data.get("url"),
+            "item_type": data.get("itemType"),
+            "publication": data.get("publicationTitle"),
+            "abstract": data.get("abstractNote"),
+            "collections": data.get("collections", []),
+            "tags": [t.get("tag") for t in data.get("tags", [])],
+            "zotero_select": f"zotero://select/items/{key}",
+            "num_children": item.get("meta", {}).get("numChildren", 0),
+        }
+
+    # -------------------------------------------------------------------------
+    # Public API Methods
+    # -------------------------------------------------------------------------
+    def get_collections(self) -> list[dict[str, Any]]:
+        """List all collections in the library."""
+        if self.is_local_available:
+            try:
+                raw_collections = self._local_get("collections")
+                return [
+                    {
+                        "key": c["data"]["key"],
+                        "name": c["data"]["name"],
+                        "parent_key": c["data"].get("parentCollection") or None,
+                    }
+                    for c in raw_collections
+                ]
+            except Exception:
+                self.refresh_connection_status()
+
+        if self.cloud_client:
+            raw_collections = self.cloud_client.collections()
+            return [
+                {
+                    "key": c["data"]["key"],
+                    "name": c["data"]["name"],
+                    "parent_key": c["data"].get("parentCollection") or None,
+                }
+                for c in raw_collections
+            ]
+        return []
+
+    def get_read_papers(
+        self,
+        collection_key: str | None = None,
+        tag: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Retrieve primary paper items (excluding standalone attachments/notes)."""
+        kwargs = {
+            "limit": limit,
+            "itemType": "-attachment || note",
+        }
+        if tag:
+            kwargs["tag"] = tag
+
+        if collection_key:
+            raw_items = self._get_collection_items_raw(collection_key, **kwargs)
+        else:
+            raw_items = self._get_items_raw(**kwargs)
+
+        return [self._parse_item(item) for item in raw_items]
+
+    # -------------------------------------------------------------------------
+    # Feature 3: PDF Highlights & Annotations
+    # -------------------------------------------------------------------------
+    def get_pdf_annotations(self, item_key: str) -> list[dict[str, Any]]:
         """
-        Extract highlights and notes from the PDF attachment of a paper.
-        Returns list of quotes with: text, color, page, deep-link, and user comment.
+        Extract highlights, marginal notes, and quotes attached to a paper's PDF.
+        Maps colors to categories (finding, method, limitation, quote).
+        Constructs deep links: zotero://open-pdf/library/items/<pdf_key>?page=<page>&annotation=<ann_key>
         """
-        raise NotImplementedError("Feature 3: Extract PDF Highlights & Annotations not implemented")
+        children = self._get_children_raw(item_key)
+        pdf_attachments = [
+            c for c in children
+            if c.get("data", {}).get("itemType") == "attachment"
+            and c.get("data", {}).get("contentType") == "application/pdf"
+        ]
 
-    async def add_tag_to_item(self, item_key: str, tag: str) -> bool:
+        if not pdf_attachments:
+            pdf_attachments = [
+                c for c in children
+                if c.get("data", {}).get("itemType") == "attachment"
+                and c.get("data", {}).get("filename", "").lower().endswith(".pdf")
+            ]
+
+        if not pdf_attachments:
+            return []
+
+        annotations_result = []
+
+        for pdf in pdf_attachments:
+            pdf_key = pdf["data"]["key"]
+            raw_annots = []
+
+            if self.is_local_available:
+                try:
+                    all_annots = self._local_get("items", {"itemType": "annotation", "limit": 100})
+                    raw_annots = [a for a in all_annots if a.get("data", {}).get("parentItem") == pdf_key]
+                except Exception:
+                    raw_annots = self._get_children_raw(pdf_key)
+            else:
+                raw_annots = self._get_children_raw(pdf_key)
+
+            for a in raw_annots:
+                data = a.get("data", {})
+                if data.get("itemType") != "annotation":
+                    continue
+
+                ann_key = data.get("key", "")
+                color_hex = (data.get("annotationColor") or "#ffd400").lower()
+                category = self.COLOR_MAP.get(color_hex, "other")
+                page_str = data.get("annotationPageLabel")
+                page = int(page_str) if page_str and str(page_str).isdigit() else 1
+                text = (data.get("annotationText") or "").strip()
+                comment = (data.get("annotationComment") or "").strip()
+
+                deep_link = (
+                    f"zotero://open-pdf/library/items/{pdf_key}"
+                    f"?page={page}&annotation={ann_key}"
+                )
+
+                annotations_result.append({
+                    "key": ann_key,
+                    "pdf_key": pdf_key,
+                    "paper_key": item_key,
+                    "text": text,
+                    "comment": comment or None,
+                    "color_hex": color_hex,
+                    "category": category,
+                    "page": page,
+                    "deep_link": deep_link,
+                })
+
+        annotations_result.sort(key=lambda x: x["page"])
+        return annotations_result
+
+    # -------------------------------------------------------------------------
+    # Feature 4: Tagging
+    # -------------------------------------------------------------------------
+    def add_tag_to_item(self, item_key: str, tag: str) -> bool:
         """Add a status or topic tag to a Zotero item."""
-        raise NotImplementedError("Feature 4: Update Paper Metadata / Tags not implemented")
+        if not self.cloud_client:
+            print("Tagging requires cloud client with write permissions.")
+            return False
+        try:
+            item = self.cloud_client.item(item_key)
+            current_tags = [t["tag"] for t in item["data"].get("tags", [])]
+            if tag not in current_tags:
+                self.cloud_client.add_tags(item, tag)
+                return True
+            return True
+        except Exception as e:
+            print(f"Error adding tag to item {item_key}: {e}")
+            return False

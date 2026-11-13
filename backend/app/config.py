@@ -3,6 +3,8 @@ Centralized Configuration & Keyring Reader
 ------------------------------------------
 Reads credentials directly from the Linux system keyring (service: 'lit-review')
 managed by standard Linux CLI tools (such as secret-tool or keyring CLI).
+
+Zero secrets or personal cloud directories stored in repository files.
 """
 
 import os
@@ -11,12 +13,17 @@ from pathlib import Path
 
 KEYRING_SERVICE_NAME = "lit-review"
 
+# Determine repository root directory (where the 'obsidian' symlink lives)
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 class Settings:
     def __init__(self):
+        # Default to the 'obsidian' symlink in the repository root
+        default_vault_path = REPO_ROOT / "obsidian"
         self.obsidian_vault_path: str = os.environ.get(
             "OBSIDIAN_VAULT_PATH",
-            str(Path.home() / "Dropbox" / "Obsidian" / "Academic")
+            str(default_vault_path)
         )
         self.zotero_library_type: str = os.environ.get("ZOTERO_LIBRARY_TYPE", "user")
 
