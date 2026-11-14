@@ -1,0 +1,66 @@
+"""Pydantic schemas for FastAPI request and response models."""
+
+from typing import Any
+from pydantic import BaseModel, Field
+
+
+class HealthResponse(BaseModel):
+    status: str
+    zotero_mode: str
+    zotero_local_available: bool
+    obsidian_vault_exists: bool
+    obsidian_vault_path: str
+
+
+class CollectionItem(BaseModel):
+    key: str
+    name: str
+    parent_key: str | None = None
+
+
+class PaperSummary(BaseModel):
+    key: str
+    version: int | None = None
+    citekey: str
+    title: str
+    authors: list[str] = []
+    author_short: str | None = None
+    year: int | None = None
+    doi: str | None = None
+    publication: str | None = None
+    tags: list[str] = []
+    collections: list[str] = []
+    has_obsidian_note: bool = False
+
+
+class PaperDetailResponse(BaseModel):
+    citekey: str
+    metadata: dict[str, Any]
+    content: str
+    path: str
+
+
+class TagUpdateRequest(BaseModel):
+    tags: list[str] = Field(..., min_length=1, description="List of tags to add to the Zotero item")
+
+
+class TagUpdateResponse(BaseModel):
+    paper_key: str
+    tags_synced: list[str]
+    obsidian_sync: dict[str, Any]
+
+
+class SyncPaperResult(BaseModel):
+    key: str
+    citekey: str
+    status: str
+    highlights: int
+    path: str | None = None
+
+
+class SyncAllResponse(BaseModel):
+    previous_version: int | None = None
+    new_version: int
+    changed_raw_items: int
+    affected_papers: int
+    results: list[SyncPaperResult]

@@ -1,0 +1,29 @@
+{
+  "focuses": [
+    {
+      "id": "agtech-adoption",
+      "title": "Digital Agriculture Technology Adoption",
+      "description": "Socio-technical challenges, adoption barriers, and digital ecosystems in smallholder and commercial farming.",
+      "active": true
+    },
+    {
+      "id": "small-diversified-horticulture-farms",
+      "title": "Small & Diversified Horticulture Farms",
+      "description": "Impact and importance of small farms or diversified horticulture farms to society. Challenges of small farms or diversified farms.",
+      "active": true
+    },
+    {
+      "id": "farm-record-keeping-fmis",
+      "title": "Farm Record Keeping & FMIS",
+      "description": "Farm record keeping and farm management information system.",
+      "active": true
+    },
+    {
+      "id": "agricultural-engineering-experiential-education",
+      "title": "Agricultural Engineering & Experiential Education",
+      "description": "Engineering education in agriculture, experiential learning on farm, project-based education on farm.",
+      "active": true
+    }
+  ],
+  "updated_at": "2026-11-14T21:08:50+00:00"
+}

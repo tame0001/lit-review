@@ -21,6 +21,7 @@ Features Implemented:
 """
 
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import frontmatter
@@ -50,6 +51,17 @@ class ObsidianService:
     def note_exists(self, citekey: str) -> bool:
         """Check if an atomic note for @citekey exists in 01-Literature/."""
         return (self.lit_dir / f"@{citekey}.md").exists()
+
+    def is_llm_analyzed(self, citekey: str) -> bool:
+        """Return True if @citekey.md exists and already has `llm_analyzed: true`."""
+        file_path = self.lit_dir / f"@{citekey}.md"
+        if not file_path.exists():
+            return False
+        try:
+            post = frontmatter.loads(file_path.read_text(errors="ignore"))
+            return bool(post.metadata.get("llm_analyzed", False))
+        except Exception:
+            return False
 
     def _extract_existing_personal_notes(self, file_path: Path) -> str | None:
         """
@@ -96,9 +108,14 @@ class ObsidianService:
         limitations: list[str] | None = None,
         scite_metrics: dict[str, int] | None = None,
         contrasting_snippets: list[dict[str, Any]] | None = None,
+        llm_insights: dict[str, Any] | None = None,
+        llm_source: str | None = None,
+        priority_scores: dict[str, float] | None = None,
     ) -> Path:
         """
         Write or non-destructively update an atomic literature note (@citekey.md).
+        Tracks whether the paper was read by the user (`status`) and whether/how
+        it was analyzed by the LLM (`llm_analyzed`, `llm_analyzed_at`, `llm_source`).
         """
         self.ensure_directories()
 
@@ -114,6 +131,29 @@ class ObsidianService:
         # Preserve existing user handwritten notes if file already exists
         existing_personal_notes = self._extract_existing_personal_notes(file_path)
 
+        # Preserve existing LLM status/section if re-syncing highlights without re-running LLM
+        existing_llm_section: str | None = None
+        existing_llm_meta: dict[str, Any] = {}
+        if file_path.exists():
+            try:
+                existing_post = frontmatter.loads(file_path.read_text(errors="ignore"))
+                existing_llm_meta = {
+                    "llm_analyzed": existing_post.metadata.get("llm_analyzed", False),
+                    "llm_analyzed_at": existing_post.metadata.get("llm_analyzed_at"),
+                    "llm_source": existing_post.metadata.get("llm_source", "neither"),
+                    "priority_score": existing_post.metadata.get("priority_score", 0.0),
+                    "manual_bonus": existing_post.metadata.get("manual_bonus", 0.0),
+                }
+                llm_match = re.search(
+                    r"(## 🤖 LLM Analysis.*?)(?=\n## |\Z)",
+                    existing_post.content,
+                    re.DOTALL,
+                )
+                if llm_match:
+                    existing_llm_section = llm_match.group(1).strip()
+            except Exception:
+                pass
+
         # ---------------------------------------------------------------------
         # 1. Frontmatter Metadata (Zotero tags as single source of truth)
         # ---------------------------------------------------------------------
@@ -124,6 +164,26 @@ class ObsidianService:
             if isinstance(t, str) and t.strip()
         ]
 
+        if llm_insights is not None:
+            llm_analyzed = True
+            llm_analyzed_at = datetime.now().strftime("%Y-%m-%d")
+            resolved_llm_source = llm_source or "abstract"
+        else:
+            llm_analyzed = existing_llm_meta.get("llm_analyzed", False)
+            llm_analyzed_at = existing_llm_meta.get("llm_analyzed_at")
+            resolved_llm_source = llm_source or existing_llm_meta.get("llm_source", "neither")
+
+        resolved_priority = (
+            priority_scores.get("priority_score", 0.0)
+            if priority_scores is not None
+            else existing_llm_meta.get("priority_score", 0.0)
+        )
+        resolved_bonus = (
+            priority_scores.get("manual_bonus", 0.0)
+            if priority_scores is not None
+            else existing_llm_meta.get("manual_bonus", 0.0)
+        )
+
         meta = {
             "citekey": citekey,
             "title": paper_metadata.get("title", "Untitled"),
@@ -131,10 +191,16 @@ class ObsidianService:
             "year": paper_metadata.get("year"),
             "doi": paper_metadata.get("doi"),
             "status": "read" if annotations else "unread",
+            "priority_score": resolved_priority,
+            "manual_bonus": resolved_bonus,
+            "llm_analyzed": llm_analyzed,
+            "llm_analyzed_at": llm_analyzed_at,
+            "llm_source": resolved_llm_source,
             "tags": tags,
             "scite_supporting": scite_metrics.get("supporting", 0),
             "scite_contrasting": scite_metrics.get("contrasting", 0),
             "scite_mentioning": scite_metrics.get("mentioning", 0),
+            "scite_total_citations": scite_metrics.get("total", scite_metrics.get("total_citations", 0)),
         }
 
         # ---------------------------------------------------------------------
@@ -229,6 +295,26 @@ class ObsidianService:
                 snippet = s.get("snippet", "").replace("\n", " ").strip()
                 body_sections.append(f"- **Disputed by {c_title}:**\n  > \"{snippet}\"")
             body_sections.append("")
+
+        # LLM Structured Analysis (separated from user highlights)
+        if llm_insights is not None:
+            body_sections.append(f"## 🤖 LLM Analysis (Source: {resolved_llm_source})")
+            method_study = llm_insights.get("method_of_study")
+            if method_study:
+                body_sections.append(f"- **Method of Study:** {method_study}")
+            kf = llm_insights.get("key_findings", [])
+            if kf:
+                body_sections.append("- **Key Findings:**")
+                for item in kf:
+                    body_sections.append(f"  - {item}")
+            lims = llm_insights.get("limitations", [])
+            if lims:
+                body_sections.append("- **Limitations:**")
+                for item in lims:
+                    body_sections.append(f"  - {item}")
+            body_sections.append("")
+        elif existing_llm_section:
+            body_sections.append(existing_llm_section + "\n")
 
         # Protected User Notes Section
         body_sections.append(self.PERSONAL_NOTES_HEADER)

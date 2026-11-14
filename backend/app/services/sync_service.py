@@ -22,10 +22,11 @@ Key Capabilities:
 import json
 from pathlib import Path
 from typing import Any
-from ..config import REPO_ROOT
+from ..config import REPO_ROOT, settings
 from .zotero_service import ZoteroService
 from .scite_service import SciteService
 from .obsidian_service import ObsidianService
+from .llm_service import LLMService
 
 
 class SyncService:
@@ -198,3 +199,136 @@ class SyncService:
             "tags_synced": added_tags,
             "obsidian_sync": sync_result,
         }
+
+    def analyze_paper(
+        self,
+        paper_key: str,
+        llm: LLMService,
+        research_focuses: list[dict[str, Any]] | None = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Score relevance, extract structured insights (full-text preferred, abstract fallback),
+        and update the Obsidian literature note. Skips papers already marked `llm_analyzed: true`
+        unless `force=True`.
+        """
+        if research_focuses is None:
+            research_focuses = settings.get_research_focuses(active_only=True)["focuses"]
+
+        paper = self.zot.get_paper_metadata(paper_key)
+        citekey = paper["citekey"]
+
+        if self.obs.is_llm_analyzed(citekey) and not force:
+            existing = self.obs.get_literature_note(citekey) or {}
+            meta = existing.get("metadata", {})
+            return {
+                "key": paper_key,
+                "citekey": citekey,
+                "status": "skipped_already_analyzed",
+                "priority_score": meta.get("priority_score", 0.0),
+                "llm_source": meta.get("llm_source", "neither"),
+            }
+
+        annotations = self.zot.get_pdf_annotations(paper_key)
+        existing_note = self.obs.get_literature_note(citekey)
+        existing_meta = existing_note.get("metadata", {}) if existing_note else {}
+
+        if "scite_supporting" in existing_meta and "scite_total_citations" in existing_meta and not force:
+            scite_metrics = {
+                "supporting": existing_meta.get("scite_supporting", 0),
+                "contrasting": existing_meta.get("scite_contrasting", 0),
+                "mentioning": existing_meta.get("scite_mentioning", 0),
+                "total": existing_meta.get("scite_total_citations", 0),
+            }
+        else:
+            scite_metrics = self.scite.get_tallies(paper.get("doi"))
+
+        full_text = self.zot.get_pdf_full_text(paper_key)
+        abstract = paper.get("abstract") or ""
+        if full_text and len(full_text.strip()) >= 500:
+            llm_source = "full-text"
+            analysis_text = full_text
+        elif abstract.strip():
+            llm_source = "abstract"
+            analysis_text = abstract
+        else:
+            llm_source = "neither"
+            analysis_text = ""
+
+        if analysis_text:
+            analysis = llm.analyze_paper_content(
+                title=paper.get("title", ""),
+                text=analysis_text,
+                research_focuses=research_focuses,
+            )
+            relevance_score = analysis["relevance_score"]
+            llm_insights = {
+                "method_of_study": analysis["method_of_study"],
+                "key_findings": analysis["key_findings"],
+                "limitations": analysis["limitations"],
+            }
+        else:
+            relevance = llm.score_paper_relevance(
+                title=paper.get("title", ""),
+                abstract="",
+                research_focuses=research_focuses,
+            )
+            relevance_score = relevance["relevance_score"]
+            llm_insights = None
+
+        manual_bonus = float(existing_meta.get("manual_bonus", 0.0) or 0.0)
+        priority_scores = llm.calculate_priority_score(
+            relevance_score=relevance_score,
+            total_citations=scite_metrics.get("total", scite_metrics.get("total_citations", 0)),
+            year=paper.get("year"),
+            manual_bonus=manual_bonus,
+        )
+
+        note_path = self.obs.create_or_update_literature_note(
+            paper_metadata=paper,
+            annotations=annotations,
+            scite_metrics=scite_metrics,
+            llm_insights=llm_insights,
+            llm_source=llm_source,
+            priority_scores=priority_scores,
+        )
+
+        return {
+            "key": paper_key,
+            "citekey": citekey,
+            "status": "analyzed",
+            "priority_score": priority_scores["priority_score"],
+            "llm_source": llm_source,
+            "path": str(note_path),
+        }
+
+    def analyze_library(
+        self,
+        llm: LLMService,
+        research_focuses: list[dict[str, Any]] | None = None,
+        force: bool = False,
+        max_workers: int = 10,
+    ) -> list[dict[str, Any]]:
+        """
+        Analyze all primary papers in Zotero in parallel (capped at `max_workers` <= 10
+        and rate-limited by `LLMService` to stay under Purdue GenAI's 20 req/min limit).
+        """
+        if research_focuses is None:
+            research_focuses = settings.get_research_focuses(active_only=True)["focuses"]
+
+        raw_items = self.zot._get_items_raw()
+        keys = [
+            item["key"]
+            for item in raw_items
+            if item.get("data", {}).get("itemType") not in self.EXCLUDED_ITEM_TYPES
+        ]
+        return llm.run_parallel(
+            keys,
+            lambda key: self.analyze_paper(
+                paper_key=key,
+                llm=llm,
+                research_focuses=research_focuses,
+                force=force,
+            ),
+            max_workers=max_workers,
+        )

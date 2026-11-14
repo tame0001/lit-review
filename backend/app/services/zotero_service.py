@@ -15,9 +15,13 @@ Features Implemented:
 4. Update Paper Metadata / Tags
 """
 
+import io
 import re
+from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 import httpx2
+from pypdf import PdfReader
 from pyzotero import zotero
 from ..config import settings
 
@@ -348,28 +352,86 @@ class ZoteroService:
         ]
 
     # -------------------------------------------------------------------------
-    # Feature 3: PDF Highlights & Annotations
+    # Feature 3: PDF Highlights, Annotations & Full-Text Extraction
     # -------------------------------------------------------------------------
-    def get_pdf_annotations(self, item_key: str) -> list[dict[str, Any]]:
-        """
-        Extract highlights, marginal notes, and quotes attached to a paper's PDF.
-        Maps colors to categories (finding, method, limitation, quote).
-        Constructs deep links: zotero://open-pdf/library/items/<pdf_key>?page=<page>&annotation=<ann_key>
-        """
+    def _get_pdf_attachments(self, item_key: str) -> list[dict[str, Any]]:
+        """Find PDF child attachments for a given paper item key."""
         children = self._get_children_raw(item_key)
         pdf_attachments = [
             c for c in children
             if c.get("data", {}).get("itemType") == "attachment"
             and c.get("data", {}).get("contentType") == "application/pdf"
         ]
-
         if not pdf_attachments:
             pdf_attachments = [
                 c for c in children
                 if c.get("data", {}).get("itemType") == "attachment"
                 and c.get("data", {}).get("filename", "").lower().endswith(".pdf")
             ]
+        return pdf_attachments
 
+    def get_pdf_full_text(self, item_key: str, max_chars: int = 150_000) -> str | None:
+        """
+        Extract plain full text from a paper's attached PDF (ignoring figures/tables).
+        Returns None if no PDF attachment is found or readable.
+        """
+        pdf_attachments = self._get_pdf_attachments(item_key)
+        if not pdf_attachments:
+            return None
+
+        pdf_key = pdf_attachments[0]["data"]["key"]
+        pdf_bytes: bytes | None = None
+
+        if self.is_local_available:
+            try:
+                resp = self.http_client.get(
+                    f"{self.LOCAL_URL}/items/{pdf_key}/file",
+                    follow_redirects=False,
+                )
+                if resp.status_code in (301, 302, 303, 307, 308):
+                    location = resp.headers.get("Location", "")
+                    if location.startswith("file://"):
+                        local_path = Path(unquote(urlparse(location).path))
+                        if local_path.exists():
+                            pdf_bytes = local_path.read_bytes()
+                    elif location:
+                        r2 = self.http_client.get(location)
+                        if r2.status_code == 200:
+                            pdf_bytes = r2.content
+                elif resp.status_code == 200 and resp.content:
+                    pdf_bytes = resp.content
+            except Exception as e:
+                print(f"Local PDF fetch failed for {pdf_key}: {e}")
+
+        if pdf_bytes is None and self.cloud_client:
+            try:
+                pdf_bytes = self.cloud_client.file(pdf_key)
+            except Exception as e:
+                print(f"Cloud PDF fetch failed for {pdf_key}: {e}")
+
+        if not pdf_bytes:
+            return None
+
+        try:
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            pages_text: list[str] = []
+            for idx, page in enumerate(reader.pages, start=1):
+                txt = (page.extract_text() or "").strip()
+                if txt:
+                    pages_text.append(f"[Page {idx}]\n{txt}")
+            full_text = "\n\n".join(pages_text)
+            return full_text[:max_chars] if full_text else None
+        except Exception as e:
+            print(f"PDF text extraction failed for {pdf_key}: {e}")
+            return None
+
+    def get_pdf_annotations(self, item_key: str) -> list[dict[str, Any]]:
+        """
+        Extract highlights, marginal notes, and quotes attached to a paper's PDF.
+        Maps colors to categories (finding, method, limitation, quote).
+        Constructs deep links: zotero://open-pdf/library/items/<pdf_key>?page=<page>&annotation=<ann_key>
+        """
+        pdf_attachments = self._get_pdf_attachments(item_key)
         if not pdf_attachments:
             return []
 
