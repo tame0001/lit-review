@@ -178,3 +178,6 @@ output/
 temp/
 *.xls
 obsidian
+
+# Local sync state
+.sync_state.json

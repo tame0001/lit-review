@@ -186,12 +186,20 @@ class ZoteroService:
             if match:
                 return match.group(1)
 
+        # Fallback to BBT formula: [auth:lower][TitleWordsCapitalized][year]
         author = self._extract_first_author_lastname(data.get("creators"))
         year = self._extract_year(data.get("date")) or ""
         title = data.get("title", "")
-        words = [re.sub(r"[^\w]", "", w) for w in title.split() if len(w) > 3]
-        title_word = words[0].capitalize() if words else "Paper"
-        return f"{author}{title_word}{year}"
+        
+        # Standard Better BibTeX skip words list
+        skip_words = {
+            "a", "an", "the", "for", "towards", "on", "in", "of", "and", "to",
+            "with", "using", "from", "by", "as", "at", "into", "through", "during"
+        }
+        words = [re.sub(r"[^\w]", "", w) for w in title.split()]
+        sig_words = [w.capitalize() for w in words if w.lower() not in skip_words and len(w) > 1]
+        title_part = "".join(sig_words[:3]) or "Paper"
+        return f"{author}{title_part}{year}"
 
     def _parse_item(self, item: dict[str, Any]) -> dict[str, Any]:
         data = item.get("data", {})
@@ -200,6 +208,7 @@ class ZoteroService:
         
         return {
             "key": key,
+            "version": item.get("version"),
             "citekey": self._extract_citekey(data),
             "title": data.get("title", "Untitled"),
             "authors": self._extract_authors(creators),
@@ -213,7 +222,6 @@ class ZoteroService:
             "abstract": data.get("abstractNote"),
             "collections": data.get("collections", []),
             "tags": [t.get("tag") for t in data.get("tags", [])],
-            "zotero_select": f"zotero://select/items/{key}",
             "num_children": item.get("meta", {}).get("numChildren", 0),
         }
 
@@ -248,6 +256,71 @@ class ZoteroService:
             ]
         return []
 
+    def get_item_raw(self, item_key: str) -> dict[str, Any]:
+        """Fetch raw item JSON by key (local-first with cloud fallback)."""
+        if self.is_local_available:
+            try:
+                return self._local_get(f"items/{item_key}")
+            except Exception:
+                self.refresh_connection_status()
+
+        if not self.cloud_client:
+            raise RuntimeError("Cloud client unavailable: Zotero credentials missing in keyring.")
+        return self.cloud_client.item(item_key)
+
+    def get_paper_metadata(self, item_key: str) -> dict[str, Any]:
+        """Fetch normalized metadata for a single paper by item key."""
+        return self._parse_item(self.get_item_raw(item_key))
+
+    def get_changes_since(self, since_version: int | None = None) -> tuple[list[dict[str, Any]], int]:
+        """
+        Fetch all library items (papers, attachments, annotations) modified since `since_version`.
+        Handles pagination and returns (items, latest_library_version).
+        """
+        all_items: list[dict[str, Any]] = []
+        latest_version = since_version or 0
+        start = 0
+        limit = 100
+
+        if self.is_local_available:
+            try:
+                while True:
+                    params: dict[str, Any] = {"limit": limit, "start": start}
+                    if since_version is not None:
+                        params["since"] = since_version
+
+                    resp = self.http_client.get(f"{self.LOCAL_URL}/items", params=params)
+                    resp.raise_for_status()
+
+                    if "Last-Modified-Version" in resp.headers:
+                        latest_version = int(resp.headers["Last-Modified-Version"])
+
+                    batch = resp.json()
+                    all_items.extend(batch)
+
+                    total_results = int(resp.headers.get("Total-Results", len(all_items)))
+                    start += len(batch)
+                    if not batch or start >= total_results:
+                        break
+
+                return all_items, latest_version
+            except Exception as e:
+                print(f"Local delta query failed ({e}); falling back to cloud.")
+                self.refresh_connection_status()
+
+        if not self.cloud_client:
+            raise RuntimeError("Cloud client unavailable: Zotero credentials missing in keyring.")
+
+        kwargs: dict[str, Any] = {}
+        if since_version is not None:
+            kwargs["since"] = since_version
+        all_items = self.cloud_client.everything(self.cloud_client.items(**kwargs))
+        if hasattr(self.cloud_client, "request") and self.cloud_client.request is not None:
+            lmv = self.cloud_client.request.headers.get("Last-Modified-Version")
+            if lmv:
+                latest_version = int(lmv)
+        return all_items, latest_version
+
     def get_read_papers(
         self,
         collection_key: str | None = None,
@@ -267,7 +340,12 @@ class ZoteroService:
         else:
             raw_items = self._get_items_raw(**kwargs)
 
-        return [self._parse_item(item) for item in raw_items]
+        excluded_types = {"attachment", "note", "annotation"}
+        return [
+            self._parse_item(item)
+            for item in raw_items
+            if item.get("data", {}).get("itemType") not in excluded_types
+        ]
 
     # -------------------------------------------------------------------------
     # Feature 3: PDF Highlights & Annotations

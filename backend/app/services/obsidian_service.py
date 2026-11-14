@@ -1,71 +1,290 @@
 """
 Obsidian Service
 ----------------
-This service manages reading, creating, and updating Markdown literature notes 
-and concept notes within the linked Obsidian vault (`./obsidian`).
+Manages reading, creating, and updating Markdown literature notes 
+and concept notes within the linked Obsidian vault (./obsidian).
 
-Functionality / Feature List:
-1. Vault Path & Directory Management:
-   - Verify and manage folder structure:
-     * `01-Literature/`: Atomic notes for each paper (`@citekey.md`).
-     * `02-Concepts/`: Topic and method hub notes (`[[Hyperspectral]]`, `[[Transformer]]`).
-     * `03-Research-Gaps/`: Dynamic Dataview tables and synthesis boards.
-     * `04-Manuscripts/`: Notes and outlines linked to Quarto drafts.
+Folders Managed:
+- `01-Literature/`: Atomic notes for each paper (`@citekey.md`).
+- `02-Concepts/`: Topic and method hub notes (`[[Hyperspectral]]`, `[[Transformer]]`).
+- `03-Research-Gaps/`: Dynamic Dataview tables and synthesis boards.
 
-2. Generate / Update Literature Note (`@citekey.md`):
-   - Format standardized YAML frontmatter (citekey, title, authors, year, doi, tags, scite metrics).
-   - Generate structured Markdown sections:
-     * `## 💡 Quick Finding`: 1-2 sentence takeaway for citing in Quarto.
-     * `## 📌 Highlighted Quotes`: Verbatim quotes with direct PDF page deep-links.
-     * `## 🔬 Methodology & Setup`: Methods and datasets with `[[wikilinks]]`.
-     * `## ⚠️ Limitations & Research Gaps`: Known weaknesses or open questions.
-   - Non-destructive updates: Merge new Zotero highlights without overwriting manual notes already written by the user.
-
-3. Concept & Wikilink Extraction:
-   - Identify or create linked concept notes (`[[Concept]]`) referenced across literature notes.
-   - Maintain bidirectional backlinks between literature notes and concept hubs.
-
-4. Query / Search Existing Notes:
-   - Scan existing literature notes to extract quotes, findings, or limitations for the FastAPI backend / frontend.
+Features Implemented:
+1. Directory Management: ensure_directories()
+2. Literature Note Generator & Non-Destructive Updater: create_or_update_literature_note()
+   - YAML Frontmatter with Better BibTeX citekey and Scite tallies
+   - 4-Color categorized highlights with clickable zotero://open-pdf/... deep links
+   - Methodologies with [[wikilinks]]
+   - Limitations and Scite.ai contrasting evidence
+   - Non-destructive preservation of '## 📝 My Personal Reading Notes'
+3. Note Querying & Search: get_literature_note(), list_all_notes()
 """
 
+import re
 from pathlib import Path
 from typing import Any
+import frontmatter
 from ..config import settings
 
 
 class ObsidianService:
+    PERSONAL_NOTES_HEADER = "## 📝 My Personal Reading Notes"
+
     def __init__(self, vault_path: str | Path | None = None):
         self.vault_path = Path(vault_path) if vault_path else Path(settings.obsidian_vault_path)
         self.lit_dir = self.vault_path / "01-Literature"
         self.concepts_dir = self.vault_path / "02-Concepts"
         self.gaps_dir = self.vault_path / "03-Research-Gaps"
-        self.manuscripts_dir = self.vault_path / "04-Manuscripts"
 
-    def ensure_directories(self) -> None:
-        """Create standard vault folders if they do not exist."""
-        raise NotImplementedError("Feature 1: Vault Path & Directory Management not implemented")
+    def ensure_directories(self) -> dict[str, bool]:
+        """Create standard vault folders (01 to 03) if they do not exist."""
+        created = {}
+        for directory in (self.lit_dir, self.concepts_dir, self.gaps_dir):
+            if not directory.exists():
+                directory.mkdir(parents=True, exist_ok=True)
+                created[directory.name] = True
+            else:
+                created[directory.name] = False
+        return created
 
     def note_exists(self, citekey: str) -> bool:
-        """Check if a note for @citekey already exists in 01-Literature/."""
-        raise NotImplementedError("Feature 1: Check note existence not implemented")
+        """Check if an atomic note for @citekey exists in 01-Literature/."""
+        return (self.lit_dir / f"@{citekey}.md").exists()
+
+    def _extract_existing_personal_notes(self, file_path: Path) -> str | None:
+        """
+        Extract user's manual notes under '## 📝 My Personal Reading Notes'
+        to ensure they are never overwritten during re-sync.
+        Strips the default placeholder comment if present.
+        """
+        if not file_path.exists():
+            return None
+
+        try:
+            content = file_path.read_text(errors="ignore")
+            if self.PERSONAL_NOTES_HEADER in content:
+                parts = content.split(self.PERSONAL_NOTES_HEADER, 1)
+                personal_text = parts[1].strip()
+                # Remove default HTML placeholder comment
+                cleaned = re.sub(r"<!--.*?-->", "", personal_text, flags=re.DOTALL).strip()
+                if cleaned:
+                    return cleaned
+        except Exception as e:
+            print(f"Warning: Could not read existing personal notes from {file_path}: {e}")
+        return None
+
+    @staticmethod
+    def _format_annotation_entry(a: dict[str, Any], badge: str) -> str:
+        """Format a single Zotero highlight/annotation with page deep-link and optional comment."""
+        page = a.get("page", 1)
+        link = a.get("deep_link", "")
+        text = (a.get("text") or "").replace("\n", " ").strip()
+        comment = a.get("comment")
+
+        entry = f"- {badge} *\"{text}\"* ([p. {page}]({link}))"
+        if comment:
+            entry += f"\n  > **Note:** {comment}"
+        return entry
 
     def create_or_update_literature_note(
         self,
         paper_metadata: dict[str, Any],
-        annotations: list[dict[str, Any]],
+        annotations: list[dict[str, Any]] | None = None,
         quick_finding: str | None = None,
         methods: list[str] | None = None,
+        topics: list[str] | None = None,
         limitations: list[str] | None = None,
         scite_metrics: dict[str, int] | None = None,
         contrasting_snippets: list[dict[str, Any]] | None = None,
     ) -> Path:
         """
-        Write or update an atomic literature note (@citekey.md) with YAML frontmatter,
-        quotes, deep-links, and structured sections.
+        Write or non-destructively update an atomic literature note (@citekey.md).
         """
-        raise NotImplementedError("Feature 2: Generate / Update Literature Note not implemented")
+        self.ensure_directories()
 
-    def get_all_literature_notes(self) -> list[dict[str, Any]]:
-        """Scan all @citekey.md notes and parse frontmatter + content for search."""
-        raise NotImplementedError("Feature 4: Query / Search Existing Notes not implemented")
+        citekey = paper_metadata.get("citekey", "unknown")
+        file_path = self.lit_dir / f"@{citekey}.md"
+        annotations = annotations or []
+        methods = methods or []
+        topics = topics or []
+        limitations = limitations or []
+        scite_metrics = scite_metrics or {"supporting": 0, "contrasting": 0, "mentioning": 0}
+        contrasting_snippets = contrasting_snippets or []
+
+        # Preserve existing user handwritten notes if file already exists
+        existing_personal_notes = self._extract_existing_personal_notes(file_path)
+
+        # ---------------------------------------------------------------------
+        # 1. Frontmatter Metadata (Zotero tags as single source of truth)
+        # ---------------------------------------------------------------------
+        raw_zotero_tags = paper_metadata.get("tags", [])
+        tags = [
+            re.sub(r"\s+", "-", t.strip())
+            for t in raw_zotero_tags
+            if isinstance(t, str) and t.strip()
+        ]
+
+        meta = {
+            "citekey": citekey,
+            "title": paper_metadata.get("title", "Untitled"),
+            "authors": paper_metadata.get("authors", []),
+            "year": paper_metadata.get("year"),
+            "doi": paper_metadata.get("doi"),
+            "status": "read" if annotations else "unread",
+            "tags": tags,
+            "scite_supporting": scite_metrics.get("supporting", 0),
+            "scite_contrasting": scite_metrics.get("contrasting", 0),
+            "scite_mentioning": scite_metrics.get("mentioning", 0),
+        }
+
+        # ---------------------------------------------------------------------
+        # 2. Section Partitioning of Annotations
+        # ---------------------------------------------------------------------
+        method_annots = [a for a in annotations if a.get("category") == "method"]
+        finding_annots = [a for a in annotations if a.get("category") == "finding"]
+        quote_annots = [a for a in annotations if a.get("category") == "quote"]
+        context_annots = [a for a in annotations if a.get("category") == "context"]
+        limitation_annots = [a for a in annotations if a.get("category") == "limitation"]
+        other_annots = [a for a in annotations if a.get("category") == "other"]
+
+        # ---------------------------------------------------------------------
+        # 3. Construct Markdown Body (Starts directly with Abstract)
+        # ---------------------------------------------------------------------
+        body_sections: list[str] = []
+
+        # Abstract Callout (if available)
+        abstract = paper_metadata.get("abstract")
+        if abstract:
+            clean_abstract = "\n> ".join(abstract.strip().splitlines())
+            body_sections.append(f"> [!ABSTRACT]\n> {clean_abstract}\n")
+
+        def append_highlight_section(title: str, items: list[dict[str, Any]], badge: str, empty_msg: str) -> None:
+            body_sections.append(title)
+            if items:
+                for item in items:
+                    body_sections.append(self._format_annotation_entry(item, badge))
+                body_sections.append("")
+            else:
+                body_sections.append(f"*{empty_msg}*\n")
+
+        # 1. Methods
+        body_sections.append("## 🔬 Methods")
+        if methods:
+            body_sections.append(f"- **Tags/Models**: {', '.join(f'[[{m}]]' for m in methods)}")
+        if method_annots:
+            for item in method_annots:
+                body_sections.append(self._format_annotation_entry(item, "🟢"))
+            body_sections.append("")
+        elif not methods:
+            body_sections.append("*No methodology highlights recorded.*\n")
+        else:
+            body_sections.append("")
+
+        # 2. Key Findings
+        append_highlight_section(
+            "## 💡 Key Findings",
+            finding_annots,
+            "🟡",
+            "No key finding highlights recorded."
+        )
+
+        # 3. Quotes
+        append_highlight_section(
+            "## 📌 Quotes",
+            quote_annots,
+            "🟣",
+            "No quote highlights recorded."
+        )
+
+        # 4. Context
+        append_highlight_section(
+            "## 📖 Context",
+            context_annots,
+            "🔵",
+            "No context highlights recorded."
+        )
+
+        # 5. Limitations
+        body_sections.append("## ⚠️ Limitations & Research Gaps")
+        if limitations or limitation_annots:
+            for lim in limitations:
+                prefix = "- " if not lim.startswith("- ") else ""
+                body_sections.append(f"{prefix}{lim}")
+            for item in limitation_annots:
+                body_sections.append(self._format_annotation_entry(item, "🔴"))
+            body_sections.append("")
+        else:
+            body_sections.append("*No explicit limitations noted yet.*\n")
+
+        # Other uncategorized highlights (only if present)
+        if other_annots:
+            append_highlight_section("## ⚪ Other Highlights", other_annots, "⚪", "")
+
+        # Scite.ai Contrasting Evidence
+        if contrasting_snippets:
+            body_sections.append("## ⚖️ Scite.ai Contrasting Evidence (Contested Claims)")
+            for s in contrasting_snippets:
+                c_doi = s.get("citing_doi", "")
+                c_title = s.get("citing_title") or f"DOI: {c_doi}"
+                snippet = s.get("snippet", "").replace("\n", " ").strip()
+                body_sections.append(f"- **Disputed by {c_title}:**\n  > \"{snippet}\"")
+            body_sections.append("")
+
+        # Protected User Notes Section
+        body_sections.append(self.PERSONAL_NOTES_HEADER)
+        if existing_personal_notes:
+            body_sections.append(existing_personal_notes)
+        else:
+            body_sections.append(
+                "<!-- You can write your personal thoughts, meeting notes, or project ideas here.\n"
+                "     The sync script will NEVER overwrite this section when updating! -->\n"
+            )
+
+        # ---------------------------------------------------------------------
+        # 4. Write Frontmatter & Content to File
+        # ---------------------------------------------------------------------
+        full_content = "\n".join(body_sections)
+        post = frontmatter.Post(full_content, **meta)
+        
+        file_path.write_bytes(frontmatter.dumps(post).encode("utf-8"))
+        return file_path
+
+    # -------------------------------------------------------------------------
+    # Note Querying & Search
+    # -------------------------------------------------------------------------
+    def get_literature_note(self, citekey: str) -> dict[str, Any] | None:
+        """Read and parse an existing literature note."""
+        file_path = self.lit_dir / f"@{citekey}.md"
+        if not file_path.exists():
+            return None
+
+        post = frontmatter.loads(file_path.read_text(errors="ignore"))
+        return {
+            "citekey": post.metadata.get("citekey", citekey),
+            "metadata": post.metadata,
+            "content": post.content,
+            "path": str(file_path),
+        }
+
+    def list_all_notes(self) -> list[dict[str, Any]]:
+        """List all @citekey.md notes currently stored in 01-Literature/."""
+        if not self.lit_dir.exists():
+            return []
+
+        notes = []
+        for p in self.lit_dir.glob("@*.md"):
+            try:
+                post = frontmatter.loads(p.read_text(errors="ignore"))
+                notes.append({
+                    "citekey": post.metadata.get("citekey", p.stem.lstrip("@")),
+                    "title": post.metadata.get("title", p.stem),
+                    "year": post.metadata.get("year"),
+                    "status": post.metadata.get("status", "unread"),
+                    "scite_contrasting": post.metadata.get("scite_contrasting", 0),
+                    "path": str(p),
+                })
+            except Exception:
+                continue
+
+        notes.sort(key=lambda x: str(x.get("year") or ""), reverse=True)
+        return notes

@@ -7,4 +7,5 @@ requires-python = ">=3.12"
 dependencies = [
     "keyring==25.*",
     "pyzotero==1.16.*",
+    "python-frontmatter==1.3.*",
 ]
