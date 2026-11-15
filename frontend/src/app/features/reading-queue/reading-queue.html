@@ -1,0 +1,283 @@
+<section class="queue-page">
+  <div class="overview-grid">
+    <!-- Unread KPI Card -->
+    <mat-card appearance="outlined" class="kpi-card">
+      <mat-card-content>
+        <span class="kpi-label">Unread Papers</span>
+        <strong class="kpi-value">{{ unreadCount() }}</strong>
+        <div class="kpi-meta">
+          <span>{{ papers().length }} total</span>
+          <span>·</span>
+          <span>{{ readCount() }} read</span>
+          <span>·</span>
+          <span>{{ analyzedCount() }} LLM analyzed</span>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Unread Score Histogram -->
+    <mat-card appearance="outlined" class="histogram-card">
+      <mat-card-content>
+        <div class="histogram-header">
+          <div>
+            <h2 class="card-title">Unread Paper Score Distribution</h2>
+            <p class="card-subtitle">
+              Priority scores for unread papers (click a bar to filter)
+            </p>
+          </div>
+          @if (selectedBinId()) {
+            <button matButton="text" type="button" (click)="selectedBinId.set(null)">
+              Clear bin ({{ selectedBinId() }})
+            </button>
+          }
+        </div>
+
+        @if (unreadCount() === 0 && !loading()) {
+          <div class="histogram-empty">
+            No unread papers right now. Add papers in Zotero and run Sync.
+          </div>
+        } @else {
+          <div
+            class="histogram-bars"
+            role="group"
+            aria-label="Unread paper priority score histogram"
+          >
+            @for (bin of unreadHistogram(); track bin.id) {
+              <button
+                type="button"
+                class="bin-column"
+                [class.is-active]="selectedBinId() === bin.id"
+                [attr.aria-pressed]="selectedBinId() === bin.id"
+                [attr.aria-label]="'Score ' + bin.label + ': ' + bin.count + ' unread papers'"
+                (click)="toggleHistogramBin(bin.id)"
+              >
+                <span class="bin-count">{{ bin.count }}</span>
+                <div class="bin-track">
+                  <div
+                    class="bin-fill"
+                    [style.height.%]="bin.percentHeight"
+                    [class.is-empty]="bin.count === 0"
+                  ></div>
+                </div>
+                <span class="bin-label">{{ bin.label }}</span>
+              </button>
+            }
+          </div>
+        }
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <!-- Filter Toolbar -->
+  <mat-card appearance="outlined" class="filters-card">
+    <mat-card-content>
+      <div class="filters-row">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field">
+          <mat-label>Search papers</mat-label>
+          <mat-icon matPrefix fontSet="material-symbols-outlined" aria-hidden="true">search</mat-icon>
+          <input
+            matInput
+            type="search"
+            placeholder="Title, author, or @citekey..."
+            [ngModel]="searchQuery()"
+            (ngModelChange)="searchQuery.set($event)"
+          />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="select-field">
+          <mat-label>Status</mat-label>
+          <mat-select [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)">
+            <mat-option value="all">All ({{ papers().length }})</mat-option>
+            <mat-option value="unread">Unread ({{ unreadCount() }})</mat-option>
+            <mat-option value="read">Read ({{ readCount() }})</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="select-field">
+          <mat-label>Collection</mat-label>
+          <mat-select
+            [ngModel]="collectionFilter()"
+            (ngModelChange)="collectionFilter.set($event)"
+          >
+            <mat-option value="">All Collections</mat-option>
+            @for (col of collections(); track col.key) {
+              <mat-option [value]="col.key">{{ col.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="select-field">
+          <mat-label>Tag</mat-label>
+          <mat-select [ngModel]="tagFilter()" (ngModelChange)="tagFilter.set($event)">
+            <mat-option value="">All Tags</mat-option>
+            @for (tag of availableTags(); track tag) {
+              <mat-option [value]="tag">#{{ tag }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="select-field">
+          <mat-label>LLM</mat-label>
+          <mat-select [ngModel]="llmFilter()" (ngModelChange)="llmFilter.set($event)">
+            <mat-option value="all">All</mat-option>
+            <mat-option value="analyzed">Analyzed</mat-option>
+            <mat-option value="unanalyzed">Not Analyzed</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <button matButton="outlined" type="button" (click)="clearFilters()">
+          Reset
+        </button>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Error / Loading States -->
+  @if (error()) {
+    <mat-card appearance="outlined" class="state-card error-state" role="alert">
+      <mat-card-content>
+        <p>{{ error() }}</p>
+        <button matButton="filled" type="button" (click)="loadData()">Retry</button>
+      </mat-card-content>
+    </mat-card>
+  } @else if (loading()) {
+    <mat-card appearance="outlined" class="state-card">
+      <mat-card-content>
+        <mat-progress-bar mode="indeterminate" aria-label="Loading reading queue" />
+        <p class="loading-text">Loading reading queue from Zotero &amp; Obsidian...</p>
+      </mat-card-content>
+    </mat-card>
+  } @else if (filteredPapers().length === 0) {
+    <mat-card appearance="outlined" class="state-card">
+      <mat-card-content>
+        No papers match the current filters.
+      </mat-card-content>
+    </mat-card>
+  } @else {
+    <!-- Responsive Material Table -->
+    <mat-card appearance="outlined" class="table-card">
+      <div id="queue-table-caption" class="table-caption">
+        Reading Queue ({{ filteredPapers().length }} papers, sorted by priority score)
+      </div>
+
+      <div
+        tabindex="0"
+        role="region"
+        aria-labelledby="queue-table-caption"
+        class="table-wrapper"
+      >
+        <table mat-table [dataSource]="filteredPapers()" class="queue-table">
+          <!-- Score Column -->
+          <ng-container matColumnDef="score" sticky>
+            <th mat-header-cell *matHeaderCellDef>Score</th>
+            <td mat-cell *matCellDef="let paper" class="score-cell">
+              <div class="score-stack">
+                <span class="score-badge">
+                  {{ paper.priority_score | number: '1.1-1' }}
+                </span>
+                @if (paper.has_obsidian_note) {
+                  <div class="bonus-controls">
+                    <button
+                      type="button"
+                      class="bonus-btn"
+                      [disabled]="updatingCitekey() === paper.citekey"
+                      (click)="adjustBonus(paper, -5)"
+                      title="Decrease manual bonus by 5"
+                    >
+                      -5
+                    </button>
+                    <span class="bonus-val" title="Manual bonus">
+                      {{ paper.manual_bonus >= 0 ? '+' : '' }}{{ paper.manual_bonus }}
+                    </span>
+                    <button
+                      type="button"
+                      class="bonus-btn"
+                      [disabled]="updatingCitekey() === paper.citekey"
+                      (click)="adjustBonus(paper, 5)"
+                      title="Increase manual bonus by 5"
+                    >
+                      +5
+                    </button>
+                  </div>
+                }
+              </div>
+            </td>
+          </ng-container>
+
+          <!-- Paper Column -->
+          <ng-container matColumnDef="paper">
+            <th mat-header-cell *matHeaderCellDef>Paper</th>
+            <td mat-cell *matCellDef="let paper" class="paper-cell">
+              <div class="paper-title">{{ paper.title }}</div>
+              <div class="paper-meta">
+                <span>{{ paper.author_short || 'Unknown' }}</span>
+                @if (paper.year) {
+                  <span>· {{ paper.year }}</span>
+                }
+                <span class="citekey">&#64;{{ paper.citekey }}</span>
+              </div>
+            </td>
+          </ng-container>
+
+          <!-- Status Column -->
+          <ng-container matColumnDef="status">
+            <th mat-header-cell *matHeaderCellDef>Status</th>
+            <td mat-cell *matCellDef="let paper">
+              <span
+                class="pill"
+                [class.pill-unread]="paper.status === 'unread'"
+                [class.pill-read]="paper.status === 'read'"
+              >
+                {{ paper.status }}
+              </span>
+            </td>
+          </ng-container>
+
+          <!-- LLM Column -->
+          <ng-container matColumnDef="llm">
+            <th mat-header-cell *matHeaderCellDef>LLM</th>
+            <td mat-cell *matCellDef="let paper">
+              @if (paper.llm_analyzed) {
+                <div class="llm-cell">
+                  <span class="pill pill-llm">{{ paper.llm_source }}</span>
+                  @if (paper.llm_analyzed_at) {
+                    <span class="llm-date">{{ paper.llm_analyzed_at }}</span>
+                  }
+                </div>
+              } @else {
+                <span class="text-muted">—</span>
+              }
+            </td>
+          </ng-container>
+
+          <!-- Citations Column -->
+          <ng-container matColumnDef="citations">
+            <th mat-header-cell *matHeaderCellDef>Citations</th>
+            <td mat-cell *matCellDef="let paper" class="num-cell">
+              {{ paper.scite_total_citations }}
+            </td>
+          </ng-container>
+
+          <!-- Tags Column -->
+          <ng-container matColumnDef="tags">
+            <th mat-header-cell *matHeaderCellDef>Tags</th>
+            <td mat-cell *matCellDef="let paper">
+              @if (paper.tags.length > 0) {
+                <mat-chip-set aria-label="Paper tags">
+                  @for (tag of paper.tags; track tag) {
+                    <mat-chip class="tag-chip">#{{ tag }}</mat-chip>
+                  }
+                </mat-chip-set>
+              } @else {
+                <span class="text-muted">—</span>
+              }
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns; sticky: true"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+        </table>
+      </div>
+    </mat-card>
+  }
+</section>

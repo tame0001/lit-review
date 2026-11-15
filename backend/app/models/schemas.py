@@ -31,6 +31,23 @@ class PaperSummary(BaseModel):
     tags: list[str] = []
     collections: list[str] = []
     has_obsidian_note: bool = False
+    status: str = "unread"
+    priority_score: float = 0.0
+    manual_bonus: float = 0.0
+    llm_analyzed: bool = False
+    llm_analyzed_at: str | None = None
+    llm_source: str = "neither"
+    scite_total_citations: int = 0
+
+
+class BonusUpdateRequest(BaseModel):
+    manual_bonus: float = Field(..., description="New manual bonus score adjustment")
+
+
+class BonusUpdateResponse(BaseModel):
+    citekey: str
+    manual_bonus: float
+    priority_score: float
 
 
 class PaperDetailResponse(BaseModel):
