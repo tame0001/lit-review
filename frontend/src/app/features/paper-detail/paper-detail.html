@@ -1,0 +1,263 @@
+<section class="detail-page">
+  <div class="top-nav-row">
+    <a matButton="text" routerLink="/">
+      <mat-icon fontSet="material-symbols-outlined" aria-hidden="true">arrow_back</mat-icon>
+      <span>Back to Reading Queue</span>
+    </a>
+  </div>
+
+  @if (loading()) {
+    <mat-card appearance="outlined" class="state-card">
+      <mat-card-content>
+        <mat-progress-bar mode="indeterminate" aria-label="Loading paper details" />
+        <p class="loading-text">Loading &#64;{{ citekey() }}...</p>
+      </mat-card-content>
+    </mat-card>
+  } @else if (error()) {
+    <mat-card appearance="outlined" class="state-card error-state" role="alert">
+      <mat-card-content>
+        <p>{{ error() }}</p>
+        <button matButton="filled" type="button" (click)="loadDetail()">Retry</button>
+      </mat-card-content>
+    </mat-card>
+  } @else if (notFound()) {
+    <mat-card appearance="outlined" class="state-card">
+      <mat-card-content>
+        <h2>No Obsidian Note Yet for &#64;{{ citekey() }}</h2>
+        <p class="muted-copy">
+          This paper is in Zotero, but an Obsidian note hasn't been generated yet.
+        </p>
+        @if (itemKey()) {
+          <div class="empty-actions">
+            <button
+              matButton="filled"
+              type="button"
+              [disabled]="analyzingPaper()"
+              (click)="runLlmAnalysis(false)"
+            >
+              {{ analyzingPaper() ? 'Analyzing...' : 'Run LLM Analysis & Create Note' }}
+            </button>
+            <button
+              matButton="outlined"
+              type="button"
+              [disabled]="syncingPaper()"
+              (click)="syncSinglePaper(true)"
+            >
+              {{ syncingPaper() ? 'Syncing...' : 'Sync from Zotero Only' }}
+            </button>
+          </div>
+        }
+      </mat-card-content>
+    </mat-card>
+  } @else if (detail()) {
+    <!-- Paper Header Card -->
+    <mat-card appearance="outlined" class="header-card">
+      <mat-card-content>
+        <div class="header-layout">
+          <div class="header-main">
+            <div class="badges-row">
+              <span
+                class="pill"
+                [class.pill-unread]="status() === 'unread'"
+                [class.pill-read]="status() === 'read'"
+              >
+                {{ status() }}
+              </span>
+              @if (llmAnalyzed()) {
+                <span class="pill pill-llm">
+                  LLM: {{ llmSource() }}
+                  @if (llmAnalyzedAt()) {
+                    ({{ llmAnalyzedAt() }})
+                  }
+                </span>
+              } @else {
+                <span class="pill pill-llm">Not LLM analyzed</span>
+              }
+              <span class="citekey">&#64;{{ citekey() }}</span>
+            </div>
+
+            <h1 class="paper-title">{{ title() }}</h1>
+
+            <p class="authors-line">
+              {{ authors().join(', ') || 'Unknown authors' }}
+              @if (year()) {
+                <span> · {{ year() }}</span>
+              }
+              @if (doi()) {
+                <span>
+                  ·
+                  <a
+                    [href]="'https://doi.org/' + doi()"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    DOI: {{ doi() }}
+                  </a>
+                </span>
+              }
+            </p>
+
+            <div class="scite-row">
+              <span>Citations: <strong>{{ scite().total }}</strong></span>
+              <span>· Supporting: <strong>{{ scite().supporting }}</strong></span>
+              <span>· Contrasting: <strong>{{ scite().contrasting }}</strong></span>
+              <span>· Mentioning: <strong>{{ scite().mentioning }}</strong></span>
+            </div>
+          </div>
+
+          <div class="score-panel">
+            <span class="score-label">Priority Score</span>
+            <strong class="score-value">{{ priorityScore() | number: '1.1-1' }}</strong>
+            <div class="bonus-controls">
+              <button
+                type="button"
+                class="bonus-btn"
+                [disabled]="updatingBonus()"
+                (click)="adjustBonus(-5)"
+              >
+                -5
+              </button>
+              <span class="bonus-val" title="Manual bonus">
+                Bonus {{ manualBonus() >= 0 ? '+' : '' }}{{ manualBonus() }}
+              </span>
+              <button
+                type="button"
+                class="bonus-btn"
+                [disabled]="updatingBonus()"
+                (click)="adjustBonus(5)"
+              >
+                +5
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions-bar">
+          <button
+            matButton="outlined"
+            type="button"
+            [disabled]="updatingStatus()"
+            (click)="toggleReadStatus()"
+          >
+            <mat-icon fontSet="material-symbols-outlined" aria-hidden="true">
+              {{ status() === 'read' ? 'mark_email_unread' : 'done_all' }}
+            </mat-icon>
+            <span>
+              {{ status() === 'read' ? 'Mark as Unread' : 'Mark as Read' }}
+            </span>
+          </button>
+
+          @if (itemKey()) {
+            <button
+              matButton="outlined"
+              type="button"
+              [disabled]="syncingPaper()"
+              (click)="syncSinglePaper(true)"
+            >
+              <mat-icon fontSet="material-symbols-outlined" aria-hidden="true">sync</mat-icon>
+              <span>{{ syncingPaper() ? 'Syncing...' : 'Sync from Zotero' }}</span>
+            </button>
+
+            <button
+              matButton="filled"
+              type="button"
+              [disabled]="analyzingPaper()"
+              (click)="runLlmAnalysis(llmAnalyzed())"
+            >
+              <mat-icon fontSet="material-symbols-outlined" aria-hidden="true">psychology</mat-icon>
+              <span>
+                @if (analyzingPaper()) {
+                  Analyzing...
+                } @else if (llmAnalyzed()) {
+                  Force Re-analyze (LLM)
+                } @else {
+                  Run LLM Analysis
+                }
+              </span>
+            </button>
+          }
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Zotero Tags Card -->
+    <mat-card appearance="outlined">
+      <mat-card-content>
+        <h2 class="section-heading">Zotero Tags</h2>
+        <div class="tags-editor">
+          <div class="tags-list">
+            @if (tags().length > 0) {
+              <mat-chip-set aria-label="Paper tags">
+                @for (tag of tags(); track tag) {
+                  <mat-chip>#{{ tag }}</mat-chip>
+                }
+              </mat-chip-set>
+            } @else {
+              <span class="muted-copy">No tags yet.</span>
+            }
+          </div>
+
+          @if (itemKey()) {
+            <form class="add-tag-form" (ngSubmit)="addTag()">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="tag-input">
+                <mat-label>Add tag to Zotero</mat-label>
+                <input
+                  matInput
+                  type="text"
+                  name="newTag"
+                  placeholder="e.g. small-farms"
+                  [ngModel]="newTag()"
+                  (ngModelChange)="newTag.set($event)"
+                />
+              </mat-form-field>
+              <button
+                matButton="filled"
+                type="submit"
+                [disabled]="savingTag() || !newTag().trim()"
+              >
+                {{ savingTag() ? 'Saving...' : 'Add Tag' }}
+              </button>
+            </form>
+          }
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Abstract -->
+    @if (parsedBody().abstract) {
+      <mat-card appearance="outlined">
+        <mat-card-content>
+          <h2 class="section-heading">Abstract</h2>
+          <p class="abstract-text">{{ parsedBody().abstract }}</p>
+        </mat-card-content>
+      </mat-card>
+    }
+
+    <!-- Structured Sections (LLM Analysis, Zotero Highlights, Personal Notes) -->
+    <div class="sections-grid">
+      @for (sec of parsedBody().sections; track sec.heading) {
+        <mat-card appearance="outlined">
+          <mat-card-content>
+            <h2 class="section-heading">{{ sec.heading }}</h2>
+            @if (sec.lines.length === 0) {
+              <p class="muted-copy">No entries recorded.</p>
+            } @else {
+              <ul class="section-list">
+                @for (line of sec.lines; track $index) {
+                  <li>
+                    <span>{{ line.text }}</span>
+                    @if (line.linkUrl) {
+                      <a class="deep-link" [href]="line.linkUrl">
+                        ({{ line.linkLabel }})
+                      </a>
+                    }
+                  </li>
+                }
+              </ul>
+            }
+          </mat-card-content>
+        </mat-card>
+      }
+    </div>
+  }
+</section>

@@ -12,6 +12,8 @@ from ..models.schemas import (
     CollectionItem,
     PaperSummary,
     PaperDetailResponse,
+    StatusUpdateRequest,
+    StatusUpdateResponse,
     TagUpdateRequest,
     TagUpdateResponse,
 )
@@ -117,3 +119,22 @@ def update_manual_bonus(
         manual_bonus=new_bonus,
         priority_score=new_score,
     )
+
+
+@router.patch("/{citekey}/status", response_model=StatusUpdateResponse)
+def update_paper_status(
+    citekey: str,
+    payload: StatusUpdateRequest,
+    obs: ObsidianService = Depends(get_obsidian_service),
+):
+    """Manually mark a paper as 'read' or 'unread' (persists across future syncs)."""
+    note_path = obs.lit_dir / f"@{citekey}.md"
+    if not note_path.exists():
+        raise HTTPException(status_code=404, detail=f"Obsidian note for '@{citekey}' not found.")
+
+    post = frontmatter.loads(note_path.read_text(encoding="utf-8", errors="ignore"))
+    post.metadata["status"] = payload.status
+    post.metadata["status_override"] = payload.status
+    note_path.write_text(frontmatter.dumps(post) + "\n", encoding="utf-8")
+
+    return StatusUpdateResponse(citekey=citekey, status=payload.status)

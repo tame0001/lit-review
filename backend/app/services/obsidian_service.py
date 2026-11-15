@@ -143,6 +143,7 @@ class ObsidianService:
                     "llm_source": existing_post.metadata.get("llm_source", "neither"),
                     "priority_score": existing_post.metadata.get("priority_score", 0.0),
                     "manual_bonus": existing_post.metadata.get("manual_bonus", 0.0),
+                    "status_override": existing_post.metadata.get("status_override"),
                 }
                 llm_match = re.search(
                     r"(## 🤖 LLM Analysis.*?)(?=\n## |\Z)",
@@ -184,13 +185,21 @@ class ObsidianService:
             else existing_llm_meta.get("manual_bonus", 0.0)
         )
 
+        status_override = existing_llm_meta.get("status_override")
+        resolved_status = (
+            status_override
+            if status_override in ("read", "unread")
+            else ("read" if annotations else "unread")
+        )
+
         meta = {
             "citekey": citekey,
             "title": paper_metadata.get("title", "Untitled"),
             "authors": paper_metadata.get("authors", []),
             "year": paper_metadata.get("year"),
             "doi": paper_metadata.get("doi"),
-            "status": "read" if annotations else "unread",
+            "status": resolved_status,
+            **({"status_override": status_override} if status_override in ("read", "unread") else {}),
             "priority_score": resolved_priority,
             "manual_bonus": resolved_bonus,
             "llm_analyzed": llm_analyzed,

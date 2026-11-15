@@ -256,10 +256,17 @@
   padding-block: 0.65rem;
 }
 
-.paper-title {
+.paper-title-link {
+  display: inline-block;
   font-weight: 600;
   color: var(--mat-sys-on-surface);
+  text-decoration: none;
   margin-bottom: 0.2rem;
+
+  &:hover {
+    color: var(--mat-sys-primary);
+    text-decoration: underline;
+  }
 }
 
 .paper-meta {

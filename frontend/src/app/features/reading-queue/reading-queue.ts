@@ -11,6 +11,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
+import { RouterLink } from '@angular/router';
 import { CollectionItem, PaperSummary } from '../../core/models/paper.model';
 import { ApiClient } from '../../core/services/api-client';
 
@@ -28,6 +29,7 @@ export interface HistogramBin {
   imports: [
     DecimalPipe,
     FormsModule,
+    RouterLink,
     MatButtonModule,
     MatCardModule,
     MatChipsModule,
@@ -56,7 +58,7 @@ export class ReadingQueue implements OnInit {
 
   // Filters
   protected readonly searchQuery = signal('');
-  protected readonly statusFilter = signal<'all' | 'unread' | 'read'>('all');
+  protected readonly statusFilter = signal<'all' | 'unread' | 'read'>('unread');
   protected readonly collectionFilter = signal('');
   protected readonly tagFilter = signal('');
   protected readonly llmFilter = signal<'all' | 'analyzed' | 'unanalyzed'>('all');

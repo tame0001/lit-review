@@ -1,6 +1,6 @@
 """Pydantic schemas for FastAPI request and response models."""
 
-from typing import Any
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -50,6 +50,15 @@ class BonusUpdateResponse(BaseModel):
     priority_score: float
 
 
+class StatusUpdateRequest(BaseModel):
+    status: Literal["read", "unread"]
+
+
+class StatusUpdateResponse(BaseModel):
+    citekey: str
+    status: str
+
+
 class PaperDetailResponse(BaseModel):
     citekey: str
     metadata: dict[str, Any]
@@ -81,3 +90,12 @@ class SyncAllResponse(BaseModel):
     changed_raw_items: int
     affected_papers: int
     results: list[SyncPaperResult]
+
+
+class AnalyzePaperResult(BaseModel):
+    key: str
+    citekey: str
+    status: str
+    priority_score: float = 0.0
+    llm_source: str = "neither"
+    path: str | None = None

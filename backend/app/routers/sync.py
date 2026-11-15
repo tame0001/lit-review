@@ -1,9 +1,10 @@
 """Sync API routes."""
 
 from fastapi import APIRouter, Depends, Query
-from ..dependencies import get_sync_service
+from ..dependencies import get_llm_service, get_sync_service
+from ..services.llm_service import LLMService
 from ..services.sync_service import SyncService
-from ..models.schemas import SyncAllResponse, SyncPaperResult
+from ..models.schemas import AnalyzePaperResult, SyncAllResponse, SyncPaperResult
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
@@ -25,3 +26,14 @@ def sync_single_paper(
 ):
     """Sync an individual paper by Zotero item key."""
     return SyncPaperResult(**sync.sync_paper(item_key, force=force))
+
+
+@router.post("/{item_key}/analyze", response_model=AnalyzePaperResult)
+def analyze_single_paper(
+    item_key: str,
+    force: bool = Query(default=False, description="Force LLM re-analysis even if already analyzed"),
+    sync: SyncService = Depends(get_sync_service),
+    llm: LLMService = Depends(get_llm_service),
+):
+    """Run relevance scoring and structured LLM extraction for a single paper."""
+    return AnalyzePaperResult(**sync.analyze_paper(paper_key=item_key, llm=llm, force=force))

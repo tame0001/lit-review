@@ -5,6 +5,7 @@ from .services.zotero_service import ZoteroService
 from .services.scite_service import SciteService
 from .services.obsidian_service import ObsidianService
 from .services.sync_service import SyncService
+from .services.llm_service import LLMService
 
 
 @lru_cache
@@ -29,3 +30,8 @@ def get_sync_service() -> SyncService:
         scite_service=get_scite_service(),
         obsidian_service=get_obsidian_service(),
     )
+
+
+@lru_cache
+def get_llm_service() -> LLMService:
+    return LLMService()

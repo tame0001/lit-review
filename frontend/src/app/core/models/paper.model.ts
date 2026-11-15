@@ -46,3 +46,38 @@ export interface BonusUpdateResponse {
   manual_bonus: number;
   priority_score: number;
 }
+
+export interface StatusUpdateResponse {
+  citekey: string;
+  status: 'read' | 'unread';
+}
+
+export interface PaperDetailResponse {
+  citekey: string;
+  metadata: Record<string, unknown>;
+  content: string;
+  path: string;
+}
+
+export interface TagUpdateResponse {
+  paper_key: string;
+  tags_synced: string[];
+  obsidian_sync: Record<string, unknown>;
+}
+
+export interface SyncPaperResult {
+  key: string;
+  citekey: string;
+  status: string;
+  highlights: number;
+  path: string | null;
+}
+
+export interface AnalyzePaperResult {
+  key: string;
+  citekey: string;
+  status: string;
+  priority_score: number;
+  llm_source: string;
+  path: string | null;
+}

@@ -208,7 +208,13 @@
           <ng-container matColumnDef="paper">
             <th mat-header-cell *matHeaderCellDef>Paper</th>
             <td mat-cell *matCellDef="let paper" class="paper-cell">
-              <div class="paper-title">{{ paper.title }}</div>
+              <a
+                class="paper-title-link"
+                [routerLink]="['/papers', paper.citekey]"
+                [queryParams]="{ key: paper.key }"
+              >
+                {{ paper.title }}
+              </a>
               <div class="paper-meta">
                 <span>{{ paper.author_short || 'Unknown' }}</span>
                 @if (paper.year) {
