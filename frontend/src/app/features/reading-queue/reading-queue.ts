@@ -7,6 +7,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -36,6 +37,7 @@ export interface HistogramBin {
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
+    MatPaginatorModule,
     MatProgressBarModule,
     MatSelectModule,
     MatSnackBarModule,
@@ -56,13 +58,15 @@ export class ReadingQueue implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly updatingCitekey = signal<string | null>(null);
 
-  // Filters
+  // Filters & Pagination
   protected readonly searchQuery = signal('');
   protected readonly statusFilter = signal<'all' | 'unread' | 'read'>('unread');
   protected readonly collectionFilter = signal('');
   protected readonly tagFilter = signal('');
   protected readonly llmFilter = signal<'all' | 'analyzed' | 'unanalyzed'>('all');
   protected readonly selectedBinId = signal<string | null>(null);
+  protected readonly pageIndex = signal(0);
+  protected readonly pageSize = signal(25);
 
   protected readonly unreadPapers = computed(() =>
     this.papers().filter((p) => p.status === 'unread')
@@ -145,6 +149,11 @@ export class ReadingQueue implements OnInit {
       .sort((a, b) => (b.priority_score ?? 0) - (a.priority_score ?? 0));
   });
 
+  protected readonly paginatedPapers = computed(() => {
+    const start = this.pageIndex() * this.pageSize();
+    return this.filteredPapers().slice(start, start + this.pageSize());
+  });
+
   ngOnInit(): void {
     this.loadData();
   }
@@ -158,7 +167,7 @@ export class ReadingQueue implements OnInit {
       error: () => {},
     });
 
-    this.api.getPapers({ limit: 500 }).subscribe({
+    this.api.getPapers({ limit: 2000 }).subscribe({
       next: (items) => {
         this.papers.set(items);
         this.loading.set(false);
@@ -175,6 +184,16 @@ export class ReadingQueue implements OnInit {
 
   toggleHistogramBin(binId: string): void {
     this.selectedBinId.update((current) => (current === binId ? null : binId));
+    this.pageIndex.set(0);
+  }
+
+  onPageChange(event: PageEvent): void {
+    this.pageIndex.set(event.pageIndex);
+    this.pageSize.set(event.pageSize);
+  }
+
+  resetPage(): void {
+    this.pageIndex.set(0);
   }
 
   clearFilters(): void {
@@ -184,6 +203,7 @@ export class ReadingQueue implements OnInit {
     this.tagFilter.set('');
     this.llmFilter.set('all');
     this.selectedBinId.set(null);
+    this.pageIndex.set(0);
   }
 
   adjustBonus(paper: PaperSummary, delta: number): void {

@@ -32,7 +32,7 @@ def list_papers(
     collection_key: str | None = Query(default=None, description="Filter by Zotero collection key"),
     tag: str | None = Query(default=None, description="Filter by Zotero tag"),
     status: str | None = Query(default=None, description="Filter by 'read' or 'unread' (based on Obsidian note)"),
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=2000, ge=1, le=10000),
     zot: ZoteroService = Depends(get_zotero_service),
     obs: ObsidianService = Depends(get_obsidian_service),
 ):

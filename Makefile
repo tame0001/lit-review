@@ -8,7 +8,7 @@ help:
 	@echo "  make sync      - Run Zotero -> Scite -> Obsidian incremental delta sync"
 
 backend:
-	python3 -m uvicorn app.main:app --app-dir backend --reload --port 8000
+	uv run uvicorn app.main:app --app-dir backend --reload --port 8000
 
 frontend:
 	@if [ ! -d "frontend" ]; then \
@@ -29,4 +29,4 @@ dev:
 	fi
 
 sync:
-	PYTHONPATH=backend python3 -c "from app.services.sync_service import SyncService; print(SyncService().sync_all_changes())"
+	PYTHONPATH=backend uv run python -c "from app.services.sync_service import SyncService; print(SyncService().sync_all_changes())"

@@ -33,7 +33,7 @@ export class ApiClient {
     status?: string;
     limit?: number;
   }): Observable<PaperSummary[]> {
-    let params = new HttpParams().set('limit', String(filters?.limit ?? 200));
+    let params = new HttpParams().set('limit', String(filters?.limit ?? 2000));
     if (filters?.collectionKey) {
       params = params.set('collection_key', filters.collectionKey);
     }

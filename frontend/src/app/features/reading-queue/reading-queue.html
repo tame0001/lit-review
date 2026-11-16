@@ -26,7 +26,11 @@
             </p>
           </div>
           @if (selectedBinId()) {
-            <button matButton="text" type="button" (click)="selectedBinId.set(null)">
+            <button
+              matButton="text"
+              type="button"
+              (click)="selectedBinId.set(null); resetPage()"
+            >
               Clear bin ({{ selectedBinId() }})
             </button>
           }
@@ -80,13 +84,16 @@
             type="search"
             placeholder="Title, author, or @citekey..."
             [ngModel]="searchQuery()"
-            (ngModelChange)="searchQuery.set($event)"
+            (ngModelChange)="searchQuery.set($event); resetPage()"
           />
         </mat-form-field>
 
         <mat-form-field appearance="outline" subscriptSizing="dynamic" class="select-field">
           <mat-label>Status</mat-label>
-          <mat-select [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)">
+          <mat-select
+            [ngModel]="statusFilter()"
+            (ngModelChange)="statusFilter.set($event); resetPage()"
+          >
             <mat-option value="all">All ({{ papers().length }})</mat-option>
             <mat-option value="unread">Unread ({{ unreadCount() }})</mat-option>
             <mat-option value="read">Read ({{ readCount() }})</mat-option>
@@ -97,7 +104,7 @@
           <mat-label>Collection</mat-label>
           <mat-select
             [ngModel]="collectionFilter()"
-            (ngModelChange)="collectionFilter.set($event)"
+            (ngModelChange)="collectionFilter.set($event); resetPage()"
           >
             <mat-option value="">All Collections</mat-option>
             @for (col of collections(); track col.key) {
@@ -108,7 +115,7 @@
 
         <mat-form-field appearance="outline" subscriptSizing="dynamic" class="select-field">
           <mat-label>Tag</mat-label>
-          <mat-select [ngModel]="tagFilter()" (ngModelChange)="tagFilter.set($event)">
+          <mat-select [ngModel]="tagFilter()" (ngModelChange)="tagFilter.set($event); resetPage()">
             <mat-option value="">All Tags</mat-option>
             @for (tag of availableTags(); track tag) {
               <mat-option [value]="tag">#{{ tag }}</mat-option>
@@ -118,7 +125,7 @@
 
         <mat-form-field appearance="outline" subscriptSizing="dynamic" class="select-field">
           <mat-label>LLM</mat-label>
-          <mat-select [ngModel]="llmFilter()" (ngModelChange)="llmFilter.set($event)">
+          <mat-select [ngModel]="llmFilter()" (ngModelChange)="llmFilter.set($event); resetPage()">
             <mat-option value="all">All</mat-option>
             <mat-option value="analyzed">Analyzed</mat-option>
             <mat-option value="unanalyzed">Not Analyzed</mat-option>
@@ -166,7 +173,7 @@
         aria-labelledby="queue-table-caption"
         class="table-wrapper"
       >
-        <table mat-table [dataSource]="filteredPapers()" class="queue-table">
+        <table mat-table [dataSource]="paginatedPapers()" class="queue-table">
           <!-- Score Column -->
           <ng-container matColumnDef="score" sticky>
             <th mat-header-cell *matHeaderCellDef>Score</th>
@@ -284,6 +291,16 @@
           <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
         </table>
       </div>
+
+      <mat-paginator
+        [length]="filteredPapers().length"
+        [pageSize]="pageSize()"
+        [pageIndex]="pageIndex()"
+        [pageSizeOptions]="[25, 50, 100]"
+        showFirstLastButtons
+        aria-label="Select page of papers"
+        (page)="onPageChange($event)"
+      />
     </mat-card>
   }
 </section>
