@@ -181,3 +181,7 @@ obsidian
 
 # Local sync state
 .sync_state.json
+
+# Local SQLite read index & sync state
+.lit_review_index.db*
+.sync_state.json

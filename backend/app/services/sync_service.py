@@ -27,6 +27,7 @@ from .zotero_service import ZoteroService
 from .scite_service import SciteService
 from .obsidian_service import ObsidianService
 from .llm_service import LLMService
+from .index_service import IndexService
 
 
 class SyncService:
@@ -37,11 +38,13 @@ class SyncService:
         zotero_service: ZoteroService | None = None,
         scite_service: SciteService | None = None,
         obsidian_service: ObsidianService | None = None,
+        index_service: IndexService | None = None,
         state_path: str | Path | None = None,
     ):
         self.zot = zotero_service or ZoteroService()
         self.scite = scite_service or SciteService()
         self.obs = obsidian_service or ObsidianService()
+        self.idx = index_service or IndexService()
         self.state_path = Path(state_path) if state_path else (REPO_ROOT / ".sync_state.json")
 
     # -------------------------------------------------------------------------
@@ -111,6 +114,11 @@ class SyncService:
     # -------------------------------------------------------------------------
     # Public Sync Methods
     # -------------------------------------------------------------------------
+    def _upsert_paper_index(self, paper: dict[str, Any]) -> None:
+        note = self.obs.get_literature_note(paper["citekey"])
+        obs_meta = note.get("metadata") if note else None
+        self.idx.upsert_paper(self.idx.build_summary_record(paper, obs_meta))
+
     def sync_paper(self, paper_key: str, force: bool = False) -> dict[str, Any]:
         """
         Sync an individual paper from Zotero -> Scite -> Obsidian.
@@ -120,6 +128,7 @@ class SyncService:
         annotations = self.zot.get_pdf_annotations(paper_key)
 
         if not annotations and not force:
+            self._upsert_paper_index(paper)
             return {
                 "key": paper_key,
                 "citekey": paper["citekey"],
@@ -147,6 +156,7 @@ class SyncService:
             annotations=annotations,
             scite_metrics=scite_metrics,
         )
+        self._upsert_paper_index(paper)
 
         return {
             "key": paper_key,
@@ -170,6 +180,9 @@ class SyncService:
         results: list[dict[str, Any]] = []
         for key in sorted(affected_keys):
             results.append(self.sync_paper(key, force=force_full))
+
+        if force_full or changed_items:
+            self.idx.replace_collections(self.zot.get_collections())
 
         self._save_state({"last_library_version": new_version})
 
@@ -292,6 +305,7 @@ class SyncService:
             llm_source=llm_source,
             priority_scores=priority_scores,
         )
+        self._upsert_paper_index(paper)
 
         return {
             "key": paper_key,

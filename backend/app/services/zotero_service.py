@@ -42,7 +42,7 @@ class ZoteroService:
         api_key: str | None = None,
         library_type: str | None = None,
         prefer_local: bool = True,
-        timeout: float = 3.0,
+        timeout: float = 15.0,
     ):
         self.library_id = library_id or settings.zotero_library_id
         self.api_key = api_key or settings.zotero_api_key
@@ -100,41 +100,74 @@ class ZoteroService:
         resp.raise_for_status()
         return resp.json()
 
+    def _local_get_paginated(
+        self,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        max_items: int = 10000,
+        page_size: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Fetch all pages from Zotero localhost API in chunks so large libraries never time out."""
+        results: list[dict[str, Any]] = []
+        base_params = dict(params or {})
+        start = 0
+
+        while len(results) < max_items:
+            batch_limit = min(page_size, max_items - len(results))
+            page_params = {**base_params, "limit": batch_limit, "start": start}
+            batch = self._local_get(endpoint, page_params)
+            if not batch:
+                break
+            results.extend(batch)
+            if len(batch) < batch_limit:
+                break
+            start += len(batch)
+
+        return results
+
     def _get_items_raw(self, **kwargs) -> list[dict[str, Any]]:
         """Fetch items using local API if available, else cloud."""
+        requested_limit = int(kwargs.get("limit", 10000))
         if self.is_local_available:
             try:
                 params: dict[str, Any] = {}
-                if "limit" in kwargs:
-                    params["limit"] = kwargs["limit"]
                 if "itemType" in kwargs:
                     params["itemType"] = kwargs["itemType"]
                 if "tag" in kwargs:
                     params["tag"] = kwargs["tag"]
-                return self._local_get("items", params)
+                return self._local_get_paginated("items", params, max_items=requested_limit)
             except Exception as e:
                 print(f"Local query failed ({e}); falling back to cloud.")
                 self.refresh_connection_status()
 
         if not self.cloud_client:
             raise RuntimeError("Cloud client unavailable: Zotero credentials missing in keyring.")
+        if requested_limit > 100:
+            cloud_kwargs = {k: v for k, v in kwargs.items() if k != "limit"}
+            return self.cloud_client.everything(self.cloud_client.items(**cloud_kwargs))[:requested_limit]
         return self.cloud_client.items(**kwargs)
 
     def _get_collection_items_raw(self, collection_key: str, **kwargs) -> list[dict[str, Any]]:
         """Fetch collection items using local API if available, else cloud."""
+        requested_limit = int(kwargs.get("limit", 10000))
         if self.is_local_available:
             try:
                 params: dict[str, Any] = {}
-                if "limit" in kwargs:
-                    params["limit"] = kwargs["limit"]
                 if "itemType" in kwargs:
                     params["itemType"] = kwargs["itemType"]
-                return self._local_get(f"collections/{collection_key}/items", params)
+                return self._local_get_paginated(
+                    f"collections/{collection_key}/items", params, max_items=requested_limit
+                )
             except Exception:
                 self.refresh_connection_status()
 
         if not self.cloud_client:
             raise RuntimeError("Cloud client unavailable: Zotero credentials missing in keyring.")
+        if requested_limit > 100:
+            cloud_kwargs = {k: v for k, v in kwargs.items() if k != "limit"}
+            return self.cloud_client.everything(
+                self.cloud_client.collection_items(collection_key, **cloud_kwargs)
+            )[:requested_limit]
         return self.cloud_client.collection_items(collection_key, **kwargs)
 
     def _get_children_raw(self, item_key: str) -> list[dict[str, Any]]:
@@ -443,7 +476,7 @@ class ZoteroService:
 
             if self.is_local_available:
                 try:
-                    all_annots = self._local_get("items", {"itemType": "annotation", "limit": 100})
+                    all_annots = self._local_get("items", {"itemType": "annotation", "limit": 10000})
                     raw_annots = [a for a in all_annots if a.get("data", {}).get("parentItem") == pdf_key]
                 except Exception:
                     raw_annots = self._get_children_raw(pdf_key)

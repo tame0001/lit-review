@@ -2,7 +2,13 @@
 
 import frontmatter
 from fastapi import APIRouter, Depends, HTTPException, Query
-from ..dependencies import get_zotero_service, get_obsidian_service, get_sync_service
+from ..dependencies import (
+    get_index_service,
+    get_obsidian_service,
+    get_sync_service,
+    get_zotero_service,
+)
+from ..services.index_service import IndexService
 from ..services.zotero_service import ZoteroService
 from ..services.obsidian_service import ObsidianService
 from ..services.sync_service import SyncService
@@ -22,9 +28,16 @@ router = APIRouter(prefix="/api/papers", tags=["papers"])
 
 
 @router.get("/collections", response_model=list[CollectionItem])
-def list_collections(zot: ZoteroService = Depends(get_zotero_service)):
-    """List all Zotero collections."""
-    return zot.get_collections()
+def list_collections(
+    zot: ZoteroService = Depends(get_zotero_service),
+    idx: IndexService = Depends(get_index_service),
+):
+    """List all Zotero collections (served from SQLite index; auto-populated if empty)."""
+    if idx.count_collections() == 0:
+        cols = zot.get_collections()
+        idx.replace_collections(cols)
+        return cols
+    return idx.list_collections()
 
 
 @router.get("", response_model=list[PaperSummary])
@@ -35,39 +48,19 @@ def list_papers(
     limit: int = Query(default=2000, ge=1, le=10000),
     zot: ZoteroService = Depends(get_zotero_service),
     obs: ObsidianService = Depends(get_obsidian_service),
+    idx: IndexService = Depends(get_index_service),
 ):
-    """List papers from Zotero, enriched with Obsidian note status, priority score, and LLM metadata."""
-    papers = zot.get_read_papers(collection_key=collection_key, tag=tag, limit=limit)
-    results: list[PaperSummary] = []
+    """List papers from the SQLite index (auto-populates from Zotero + Obsidian on first run)."""
+    if idx.count_papers() == 0:
+        idx.rebuild_from_sources(zot, obs)
 
-    for p in papers:
-        note = obs.get_literature_note(p["citekey"])
-        has_note = note is not None
-        meta = note.get("metadata", {}) if note else {}
-        paper_status = meta.get("status", "unread")
-
-        if status == "read" and paper_status != "read":
-            continue
-        if status == "unread" and paper_status != "unread":
-            continue
-
-        analyzed_at = meta.get("llm_analyzed_at")
-        results.append(
-            PaperSummary(
-                **p,
-                has_obsidian_note=has_note,
-                status=paper_status,
-                priority_score=float(meta.get("priority_score", 0.0) or 0.0),
-                manual_bonus=float(meta.get("manual_bonus", 0.0) or 0.0),
-                llm_analyzed=bool(meta.get("llm_analyzed", False)),
-                llm_analyzed_at=str(analyzed_at) if analyzed_at else None,
-                llm_source=str(meta.get("llm_source", "neither")),
-                scite_total_citations=int(meta.get("scite_total_citations", 0) or 0),
-            )
-        )
-
-    results.sort(key=lambda item: item.priority_score, reverse=True)
-    return results
+    rows = idx.list_papers(
+        collection_key=collection_key,
+        tag=tag,
+        status=status,
+        limit=limit,
+    )
+    return [PaperSummary(**row) for row in rows]
 
 
 @router.get("/{citekey}", response_model=PaperDetailResponse)
@@ -98,6 +91,7 @@ def update_manual_bonus(
     citekey: str,
     payload: BonusUpdateRequest,
     obs: ObsidianService = Depends(get_obsidian_service),
+    idx: IndexService = Depends(get_index_service),
 ):
     """Adjust manual_bonus in an Obsidian note and recalculate its priority_score."""
     note_path = obs.lit_dir / f"@{citekey}.md"
@@ -113,6 +107,7 @@ def update_manual_bonus(
     post.metadata["manual_bonus"] = new_bonus
     post.metadata["priority_score"] = new_score
     note_path.write_text(frontmatter.dumps(post) + "\n", encoding="utf-8")
+    idx.update_bonus(citekey, new_bonus, new_score)
 
     return BonusUpdateResponse(
         citekey=citekey,
@@ -126,6 +121,7 @@ def update_paper_status(
     citekey: str,
     payload: StatusUpdateRequest,
     obs: ObsidianService = Depends(get_obsidian_service),
+    idx: IndexService = Depends(get_index_service),
 ):
     """Manually mark a paper as 'read' or 'unread' (persists across future syncs)."""
     note_path = obs.lit_dir / f"@{citekey}.md"
@@ -136,5 +132,6 @@ def update_paper_status(
     post.metadata["status"] = payload.status
     post.metadata["status_override"] = payload.status
     note_path.write_text(frontmatter.dumps(post) + "\n", encoding="utf-8")
+    idx.update_status(citekey, payload.status)
 
     return StatusUpdateResponse(citekey=citekey, status=payload.status)
