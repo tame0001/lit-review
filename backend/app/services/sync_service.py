@@ -13,10 +13,6 @@ Key Capabilities:
 2. Individual Paper Sync (`sync_paper`):
    - Syncs a single paper by Zotero key (used by Delta Sync and Web App endpoints).
    - Preserves existing Scite tallies if already fetched unless `force=True`.
-
-3. Bidirectional Tag Sync (`sync_tags_to_zotero`):
-   - Pushes tags added in the Web App directly to Zotero, then updates the
-     corresponding Obsidian note so Zotero remains the single source of truth.
 """
 
 import json
@@ -192,25 +188,6 @@ class SyncService:
             "changed_raw_items": len(changed_items),
             "affected_papers": len(affected_keys),
             "results": results,
-        }
-
-    def sync_tags_to_zotero(self, paper_key: str, tags: list[str]) -> dict[str, Any]:
-        """
-        Add tags to a Zotero paper (e.g. from the Web App) and immediately
-        re-sync its Obsidian note so Zotero remains the single source of truth.
-        """
-        added_tags: list[str] = []
-        for tag in tags:
-            clean_tag = tag.strip()
-            if clean_tag and self.zot.add_tag_to_item(paper_key, clean_tag):
-                added_tags.append(clean_tag)
-
-        # Refresh local sync for this paper so Obsidian frontmatter reflects the new tags
-        sync_result = self.sync_paper(paper_key, force=True)
-        return {
-            "paper_key": paper_key,
-            "tags_synced": added_tags,
-            "obsidian_sync": sync_result,
         }
 
     def analyze_paper(

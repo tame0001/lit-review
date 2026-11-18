@@ -184,42 +184,15 @@
     <mat-card appearance="outlined">
       <mat-card-content>
         <h2 class="section-heading">Zotero Tags</h2>
-        <div class="tags-editor">
-          <div class="tags-list">
-            @if (tags().length > 0) {
-              <mat-chip-set aria-label="Paper tags">
-                @for (tag of tags(); track tag) {
-                  <mat-chip>#{{ tag }}</mat-chip>
-                }
-              </mat-chip-set>
-            } @else {
-              <span class="muted-copy">No tags yet.</span>
+        @if (tags().length > 0) {
+          <mat-chip-set aria-label="Paper tags">
+            @for (tag of tags(); track tag) {
+              <mat-chip>#{{ tag }}</mat-chip>
             }
-          </div>
-
-          @if (itemKey()) {
-            <form class="add-tag-form" (ngSubmit)="addTag()">
-              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="tag-input">
-                <mat-label>Add tag to Zotero</mat-label>
-                <input
-                  matInput
-                  type="text"
-                  name="newTag"
-                  placeholder="e.g. small-farms"
-                  [ngModel]="newTag()"
-                  (ngModelChange)="newTag.set($event)"
-                />
-              </mat-form-field>
-              <button
-                matButton="filled"
-                type="submit"
-                [disabled]="savingTag() || !newTag().trim()"
-              >
-                {{ savingTag() ? 'Saving...' : 'Add Tag' }}
-              </button>
-            </form>
-          }
-        </div>
+          </mat-chip-set>
+        } @else {
+          <span class="muted-copy">No tags yet.</span>
+        }
       </mat-card-content>
     </mat-card>
 

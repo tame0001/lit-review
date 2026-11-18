@@ -1,12 +1,9 @@
 import { DecimalPipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -29,14 +26,11 @@ export interface ParsedSection {
   selector: 'app-paper-detail',
   imports: [
     DecimalPipe,
-    FormsModule,
     RouterLink,
     MatButtonModule,
     MatCardModule,
     MatChipsModule,
-    MatFormFieldModule,
     MatIconModule,
-    MatInputModule,
     MatProgressBarModule,
     MatSnackBarModule,
   ],
@@ -55,8 +49,6 @@ export class PaperDetail implements OnInit {
   protected readonly notFound = signal(false);
   protected readonly error = signal<string | null>(null);
 
-  protected readonly newTag = signal('');
-  protected readonly savingTag = signal(false);
   protected readonly updatingBonus = signal(false);
   protected readonly updatingStatus = signal(false);
   protected readonly syncingPaper = signal(false);
@@ -192,30 +184,6 @@ export class PaperDetail implements OnInit {
       error: () => {
         this.updatingStatus.set(false);
         this.snackBar.open('Could not update paper status', 'Close', { duration: 3000 });
-      },
-    });
-  }
-
-  addTag(): void {
-    const key = this.itemKey();
-    const raw = this.newTag().trim();
-    if (!key || !raw || this.savingTag()) return;
-
-    this.savingTag.set(true);
-    this.api.addTags(key, [raw]).subscribe({
-      next: () => {
-        this.newTag.set('');
-        this.savingTag.set(false);
-        this.snackBar.open(`Synced tag "${raw}" to Zotero & Obsidian`, 'Close', {
-          duration: 3000,
-        });
-        this.loadDetail();
-      },
-      error: (err) => {
-        this.savingTag.set(false);
-        this.snackBar.open(err?.error?.detail || 'Failed to sync tag to Zotero', 'Close', {
-          duration: 4000,
-        });
       },
     });
   }

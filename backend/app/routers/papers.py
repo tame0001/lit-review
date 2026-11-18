@@ -5,13 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from ..dependencies import (
     get_index_service,
     get_obsidian_service,
-    get_sync_service,
     get_zotero_service,
 )
 from ..services.index_service import IndexService
 from ..services.zotero_service import ZoteroService
 from ..services.obsidian_service import ObsidianService
-from ..services.sync_service import SyncService
 from ..models.schemas import (
     BonusUpdateRequest,
     BonusUpdateResponse,
@@ -20,8 +18,6 @@ from ..models.schemas import (
     PaperDetailResponse,
     StatusUpdateRequest,
     StatusUpdateResponse,
-    TagUpdateRequest,
-    TagUpdateResponse,
 )
 
 router = APIRouter(prefix="/api/papers", tags=["papers"])
@@ -73,17 +69,6 @@ def get_paper_note(
     if not note:
         raise HTTPException(status_code=404, detail=f"Obsidian note for '@{citekey}' not found.")
     return PaperDetailResponse(**note)
-
-
-@router.post("/{item_key}/tags", response_model=TagUpdateResponse)
-def add_tags_to_paper(
-    item_key: str,
-    payload: TagUpdateRequest,
-    sync: SyncService = Depends(get_sync_service),
-):
-    """Add tags to a Zotero item and immediately re-sync its Obsidian note."""
-    result = sync.sync_tags_to_zotero(item_key, payload.tags)
-    return TagUpdateResponse(**result)
 
 
 @router.patch("/{citekey}/bonus", response_model=BonusUpdateResponse)

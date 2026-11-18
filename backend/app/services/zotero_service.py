@@ -515,22 +515,3 @@ class ZoteroService:
 
         annotations_result.sort(key=lambda x: x["page"])
         return annotations_result
-
-    # -------------------------------------------------------------------------
-    # Feature 4: Tagging
-    # -------------------------------------------------------------------------
-    def add_tag_to_item(self, item_key: str, tag: str) -> bool:
-        """Add a status or topic tag to a Zotero item."""
-        if not self.cloud_client:
-            print("Tagging requires cloud client with write permissions.")
-            return False
-        try:
-            item = self.cloud_client.item(item_key)
-            current_tags = [t["tag"] for t in item["data"].get("tags", [])]
-            if tag not in current_tags:
-                self.cloud_client.add_tags(item, tag)
-                return True
-            return True
-        except Exception as e:
-            print(f"Error adding tag to item {item_key}: {e}")
-            return False

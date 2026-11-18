@@ -59,12 +59,6 @@ export interface PaperDetailResponse {
   path: string;
 }
 
-export interface TagUpdateResponse {
-  paper_key: string;
-  tags_synced: string[];
-  obsidian_sync: Record<string, unknown>;
-}
-
 export interface SyncPaperResult {
   key: string;
   citekey: string;

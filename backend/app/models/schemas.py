@@ -66,16 +66,6 @@ class PaperDetailResponse(BaseModel):
     path: str
 
 
-class TagUpdateRequest(BaseModel):
-    tags: list[str] = Field(..., min_length=1, description="List of tags to add to the Zotero item")
-
-
-class TagUpdateResponse(BaseModel):
-    paper_key: str
-    tags_synced: list[str]
-    obsidian_sync: dict[str, Any]
-
-
 class SyncPaperResult(BaseModel):
     key: str
     citekey: str

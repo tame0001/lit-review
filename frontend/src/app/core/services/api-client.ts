@@ -11,7 +11,6 @@ import {
   StatusUpdateResponse,
   SyncAllResponse,
   SyncPaperResult,
-  TagUpdateResponse,
 } from '../models/paper.model';
 
 @Injectable({ providedIn: 'root' })
@@ -66,10 +65,6 @@ export class ApiClient {
 
   getPaperDetail(citekey: string): Observable<PaperDetailResponse> {
     return this.http.get<PaperDetailResponse>(`${this.baseUrl}/papers/${citekey}`);
-  }
-
-  addTags(itemKey: string, tags: string[]): Observable<TagUpdateResponse> {
-    return this.http.post<TagUpdateResponse>(`${this.baseUrl}/papers/${itemKey}/tags`, { tags });
   }
 
   syncPaper(itemKey: string, force = false): Observable<SyncPaperResult> {
