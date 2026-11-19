@@ -217,6 +217,14 @@ class IndexService:
                 (status, now, citekey),
             )
 
+    def update_citations(self, citekey: str, total_citations: int, priority_score: float) -> None:
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE papers SET scite_total_citations = ?, priority_score = ?, updated_at = ? WHERE citekey = ?",
+                (total_citations, priority_score, now, citekey),
+            )
+
     def list_collections(self) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute("SELECT key, name, parent_key FROM collections ORDER BY name ASC").fetchall()

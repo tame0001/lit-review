@@ -16,8 +16,10 @@ Key Capabilities:
 """
 
 import json
+import math
 from pathlib import Path
 from typing import Any
+import frontmatter
 from ..config import REPO_ROOT, settings
 from .zotero_service import ZoteroService
 from .scite_service import SciteService
@@ -110,6 +112,10 @@ class SyncService:
     # -------------------------------------------------------------------------
     # Public Sync Methods
     # -------------------------------------------------------------------------
+    @staticmethod
+    def _citation_score(total_citations: int) -> float:
+        return min(35.0, round(11.5 * math.log10(max(0, total_citations) + 1), 1))
+
     def _upsert_paper_index(self, paper: dict[str, Any]) -> None:
         note = self.obs.get_literature_note(paper["citekey"])
         obs_meta = note.get("metadata") if note else None
@@ -135,22 +141,39 @@ class SyncService:
         # Reuse existing Scite tallies from Obsidian frontmatter if already present (unless force=True)
         scite_metrics = None
         existing_note = self.obs.get_literature_note(paper["citekey"])
+        existing_meta = existing_note.get("metadata", {}) if existing_note else {}
         if existing_note and not force:
-            meta = existing_note.get("metadata", {})
-            if "scite_supporting" in meta:
+            if "scite_supporting" in existing_meta and "scite_total_citations" in existing_meta:
                 scite_metrics = {
-                    "supporting": meta.get("scite_supporting", 0),
-                    "contrasting": meta.get("scite_contrasting", 0),
-                    "mentioning": meta.get("scite_mentioning", 0),
+                    "supporting": existing_meta.get("scite_supporting", 0),
+                    "contrasting": existing_meta.get("scite_contrasting", 0),
+                    "mentioning": existing_meta.get("scite_mentioning", 0),
+                    "total": existing_meta.get("scite_total_citations", 0),
                 }
 
         if scite_metrics is None:
             scite_metrics = self.scite.get_tallies(paper.get("doi"))
 
+        priority_scores = None
+        if existing_note and "priority_score" in existing_meta:
+            old_total = int(existing_meta.get("scite_total_citations", 0) or 0)
+            new_total = int(scite_metrics.get("total", scite_metrics.get("total_citations", 0)) or 0)
+            old_priority = float(existing_meta.get("priority_score", 0.0) or 0.0)
+            old_bonus = float(existing_meta.get("manual_bonus", 0.0) or 0.0)
+            new_priority = round(
+                old_priority - self._citation_score(old_total) + self._citation_score(new_total),
+                1,
+            )
+            priority_scores = {
+                "priority_score": new_priority,
+                "manual_bonus": old_bonus,
+            }
+
         note_path = self.obs.create_or_update_literature_note(
             paper_metadata=paper,
             annotations=annotations,
             scite_metrics=scite_metrics,
+            priority_scores=priority_scores,
         )
         self._upsert_paper_index(paper)
 
@@ -323,3 +346,43 @@ class SyncService:
             ),
             max_workers=max_workers,
         )
+
+    def refresh_citations(self) -> dict[str, Any]:
+        """
+        Fetch fresh Scite.ai citation tallies for all existing Obsidian literature notes
+        and recalculate each note's `priority_score` + SQLite index without re-running the LLM.
+        """
+        if not self.obs.lit_dir.exists():
+            return {"checked": 0, "updated": 0}
+
+        checked = 0
+        updated = 0
+        for md_file in sorted(self.obs.lit_dir.glob("@*.md")):
+            post = frontmatter.loads(md_file.read_text(encoding="utf-8", errors="ignore"))
+            doi = post.metadata.get("doi")
+            citekey = post.metadata.get("citekey") or md_file.stem.lstrip("@")
+            if not doi:
+                continue
+
+            checked += 1
+            tallies = self.scite.get_tallies(doi)
+            new_total = int(tallies.get("total", 0) or 0)
+            old_total = int(post.metadata.get("scite_total_citations", 0) or 0)
+
+            old_cit_score = self._citation_score(old_total)
+            new_cit_score = self._citation_score(new_total)
+            old_priority = float(post.metadata.get("priority_score", 0.0) or 0.0)
+            new_priority = round(old_priority - old_cit_score + new_cit_score, 1)
+
+            post.metadata["scite_supporting"] = int(tallies.get("supporting", 0) or 0)
+            post.metadata["scite_contrasting"] = int(tallies.get("contrasting", 0) or 0)
+            post.metadata["scite_mentioning"] = int(tallies.get("mentioning", 0) or 0)
+            post.metadata["scite_total_citations"] = new_total
+            post.metadata["priority_score"] = new_priority
+            md_file.write_text(frontmatter.dumps(post) + "\n", encoding="utf-8")
+
+            self.idx.update_citations(citekey, new_total, new_priority)
+            if new_total != old_total or new_priority != old_priority:
+                updated += 1
+
+        return {"checked": checked, "updated": updated}
