@@ -14,7 +14,10 @@ Before planning or editing code, read **[README.md](README.md)** for the system 
 - **Propose before coding:** Before making code changes, present a concise change summary (files to touch, behavior changes, and any open questions) and align with the project owner.
 - **Tech Stack & Skills:**
   - **Backend (`backend/`):** Uses **FastAPI** (Python). Follow the `fastapi` skill (`.agents/skills/fastapi/SKILL.md`), use `uv run` / `.venv/bin/python` (never global `python3`), keep route handlers thin, and use synchronous `def` routes for blocking I/O (`httpx2`, `sqlite3`, `pypdf`).
-  - **Frontend (`frontend/`):** Uses **Angular v22.2** with **Angular Material**. Follow the `angular-developer` skill (`.agents/skills/angular-developer/SKILL.md`) and **[frontend/AGENTS.md](frontend/AGENTS.md)**.
+  - **Frontend (`frontend/`):** Uses **Angular** with **Angular Material**. Follow the `angular-developer` skill (`.agents/skills/angular-developer/SKILL.md`) and **[frontend/AGENTS.md](frontend/AGENTS.md)**.
+- **Linting & Formatting Before Finishing:**
+  - **Backend (`backend/`):** Run `uv run ruff check backend` and `uv run ruff format backend` (or `--check`).
+  - **Frontend (`frontend/`):** Run `npm run lint` (`angular-eslint`) and `npm run format` (or `npm run format:check` with Prettier) inside `frontend/`.
 
 ## Critical Invariants (Do Not Break)
 

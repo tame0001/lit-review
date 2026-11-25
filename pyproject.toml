@@ -13,3 +13,8 @@ dependencies = [
     "pyzotero==1.16.*",
     "uvicorn==0.54.*",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.6",
+]
