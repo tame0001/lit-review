@@ -15,9 +15,9 @@ Before planning or editing code, read **[README.md](README.md)** for the system 
 - **Tech Stack & Skills:**
   - **Backend (`backend/`):** Uses **FastAPI** (Python). Follow the `fastapi` skill (`.agents/skills/fastapi/SKILL.md`), use `uv run` / `.venv/bin/python` (never global `python3`), keep route handlers thin, and use synchronous `def` routes for blocking I/O (`httpx2`, `sqlite3`, `pypdf`).
   - **Frontend (`frontend/`):** Uses **Angular** with **Angular Material**. Follow the `angular-developer` skill (`.agents/skills/angular-developer/SKILL.md`) and **[frontend/AGENTS.md](frontend/AGENTS.md)**.
-- **Linting & Formatting Before Finishing:**
-  - **Backend (`backend/`):** Run `uv run ruff check backend` and `uv run ruff format backend` (or `--check`).
-  - **Frontend (`frontend/`):** Run `npm run lint` (`angular-eslint`) and `npm run format` (or `npm run format:check` with Prettier) inside `frontend/`.
+- **Linting, Type-Checking & Formatting Before Finishing:**
+  - **Backend (`backend/`):** Run `uv run ruff check backend`, `uv run ruff format backend` (or `--check`), and `uv run pyright`.
+  - **Frontend (`frontend/`):** Run `npm run lint` (`angular-eslint`), `npm run format` (or `npm run format:check` with Prettier), and `npm run build` (runs `ng build` / TypeScript + template type-checking) inside `frontend/`.
 
 ## Critical Invariants (Do Not Break)
 

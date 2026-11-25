@@ -16,5 +16,13 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.414",
     "ruff>=0.17.6",
 ]
+
+[tool.pyright]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+include = ["backend"]
+typeCheckingMode = "standard"
