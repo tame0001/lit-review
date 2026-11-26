@@ -1,29 +1,28 @@
 # AGENTS.md
 
-You are an expert software developer assisting the project owner in designing, building, and maintaining this Literature Review Cockpit system.
+You are an expert software developer assisting the project owner in building and maintaining this system.
 
-## Project Context & Documentation
+## Docs
 
-Before planning or editing code, read **[README.md](README.md)** for the system summary, architecture, repository map, setup, and common `make` commands.
-- Backend API reference: **[backend/README.md](backend/README.md)**
-- Frontend conventions & Angular rules: **[frontend/AGENTS.md](frontend/AGENTS.md)** and **[frontend/README.md](frontend/README.md)**
-- Open audit & refactoring backlog: **[CODE_AUDIT.md](CODE_AUDIT.md)**
+Read **[README.md](README.md)** first for architecture, repo map, setup, and `make` commands.
+- Backend API: **[backend/README.md](backend/README.md)**
+- Frontend stack & Angular rules: **[frontend/README.md](frontend/README.md)**, **[frontend/AGENTS.md](frontend/AGENTS.md)**
+- Refactoring backlog: **[CODE_AUDIT.md](CODE_AUDIT.md)**
 
-## Development Workflow
+## Workflow
 
-- **Propose before coding:** Before making code changes, present a concise change summary (files to touch, behavior changes, and any open questions) and align with the project owner.
-- **Tech Stack & Skills:**
-  - **Backend (`backend/`):** Uses **FastAPI** (Python). Follow the `fastapi` skill (`.agents/skills/fastapi/SKILL.md`), use `uv run` / `.venv/bin/python` (never global `python3`), keep route handlers thin, and use synchronous `def` routes for blocking I/O (`httpx2`, `sqlite3`, `pypdf`).
-  - **Frontend (`frontend/`):** Uses **Angular** with **Angular Material**. Follow the `angular-developer` skill (`.agents/skills/angular-developer/SKILL.md`) and **[frontend/AGENTS.md](frontend/AGENTS.md)**.
-- **Linting, Type-Checking & Formatting Before Finishing:**
-  - **Backend (`backend/`):** Run `uv run ruff check backend`, `uv run ruff format backend` (or `--check`), and `uv run pyright`.
-  - **Frontend (`frontend/`):** Run `npm run lint` (`angular-eslint`), `npm run format` (or `npm run format:check` with Prettier), and `npm run build` (runs `ng build` / TypeScript + template type-checking) inside `frontend/`.
+1. **Propose before coding:** Present a brief change summary (files, behavior changes, open questions) and get alignment before editing code.
+2. **Backend (`backend/`):** FastAPI. Follow `.agents/skills/fastapi/SKILL.md`. Use `uv run` (never global `python3`), keep routers thin, and use sync `def` routes for blocking I/O (`httpx2`, `sqlite3`, `pypdf`).
+3. **Frontend (`frontend/`):** Angular + Angular Material. Follow `.agents/skills/angular-developer/SKILL.md` and **[frontend/AGENTS.md](frontend/AGENTS.md)**.
+4. **Verify before finishing:**
+   - Backend: `uv run ruff check backend`, `uv run ruff format backend`, `uv run pyright`
+   - Frontend (in `frontend/`): `npm run lint`, `npm run format`, `npm run build`
 
-## Critical Invariants (Do Not Break)
+## Invariants
 
-1. **Zotero is the single source of truth for tags.** Never add LLM-generated tags or web-UI tag-editing endpoints.
-2. **Preserve user data on re-sync:** Never overwrite `## 📝 My Personal Reading Notes`, `manual_bonus`, or `status_override` in Obsidian `@citekey.md` notes.
-3. **Skip already-analyzed papers:** Never re-run LLM analysis on papers where `llm_analyzed: true` unless `force=True` is explicitly requested.
-4. **Secrets stay in Linux keyring (`lit-review` service):** Never hardcode or commit API keys (`ZOTERO_LIBRARY_ID`, `ZOTERO_API_KEY`, `SCITE_API_KEY`, `GENAI_API_KEY`).
-5. **Zotero Localhost API quirks:** Always paginate `items` (`_local_get_paginated`) and query `items?itemType=annotation` (not `/items/{pdf_key}/children`) for PDF highlights.
-6. **Purdue GenAI quirks:** Keep `"Accept-Encoding": "gzip, deflate"` on `httpx2.Client` and cap parallel workers (`<= 10`, recommended `6` for large batches) to stay under the 20 req/min limit.
+1. **Zotero owns tags:** Never add LLM-generated tags or web-UI tag editing.
+2. **Preserve user data on sync:** Never overwrite `## 📝 My Personal Reading Notes`, `manual_bonus`, or `status_override` in `@citekey.md`.
+3. **Skip analyzed papers:** Do not re-run LLM analysis when `llm_analyzed: true` unless `force=True`.
+4. **Keyring secrets only:** Keep API keys (`ZOTERO_LIBRARY_ID`, `ZOTERO_API_KEY`, `SCITE_API_KEY`, `GENAI_API_KEY`) in Linux keyring (`lit-review`); never hardcode or commit them.
+5. **Zotero localhost API:** Always paginate `items` (`_local_get_paginated`) and fetch highlights via `items?itemType=annotation` (not `/items/{pdf_key}/children`).
+6. **Purdue GenAI:** Set `"Accept-Encoding": "gzip, deflate"` on `httpx2.Client` and cap workers (`<= 10`, `6` for batches) to stay under 20 req/min.
